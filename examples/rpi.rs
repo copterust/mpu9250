@@ -4,7 +4,6 @@
 //!
 //! - PIN1 = 3V3 = VCC
 //! - PIN19 = BCM10 = MOSI
-//! - PIN19 = BCM10 = MOSI
 //! - PIN21 = BCM9 = MISO (SCL)
 //! - PIN23 = BCM11 = SCLK
 //! - PIN24 = BCM8 = NCS
