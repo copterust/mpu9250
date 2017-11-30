@@ -105,7 +105,7 @@ where
             let slice: &mut [u8] = &mut buffer;
             slice[0] = reg.read_address();
             self.ncs.set_low();
-            spi::transfer(&mut self.spi, slice)?;
+            self.spi.transfer(slice)?;
             self.ncs.set_high();
         }
 
@@ -115,7 +115,7 @@ where
     #[allow(dead_code)]
     fn write(&mut self, reg: Register, val: u8) -> Result<(), SPI::Error> {
         self.ncs.set_low();
-        spi::transfer(&mut self.spi, &mut [reg.write_address(), val])?;
+        self.spi.write(&[reg.write_address(), val])?;
         self.ncs.set_high();
         Ok(())
     }
@@ -149,6 +149,7 @@ const R: u8 = 1 << 7;
 const W: u8 = 1 << 7;
 
 /// XYZ triple
+#[derive(Debug)]
 pub struct I16x3 {
     /// X component
     pub x: i16,
@@ -159,6 +160,7 @@ pub struct I16x3 {
 }
 
 /// Several measurements
+#[derive(Debug)]
 pub struct Measurements {
     /// Accelerometer measurements
     pub accel: I16x3,

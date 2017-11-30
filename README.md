@@ -9,11 +9,11 @@
 
 ## TODO
 
-- Access to magnetometer data
-- Make sure this works with the `spidev` crate (i.e. with the Raspberry Pi)
-- Configuration. e.g. selecting the accelerometer sensing range.
-- How to make the API compatible with device specific features like DMA?
-- Sensor fusion?
+- [ ] Access to magnetometer data
+- [x] Make sure this works with the `spidev` crate (i.e. with the Raspberry Pi)
+- [ ] Configuration. e.g. selecting the accelerometer sensing range.
+- [ ] How to make the API compatible with device specific features like DMA?
+- [ ] Sensor fusion?
 - ???
 
 ## Examples
