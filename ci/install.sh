@@ -11,8 +11,7 @@ main() {
         sh -s -- \
            --force \
            --git japaric/cross \
-           --tag $tag \
-           --target $target
+           --tag $tag
 
     case $TARGET in
         thumbv*-none-eabi*)

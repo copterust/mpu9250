@@ -6,8 +6,8 @@ main() {
             xargo check --target $TARGET
             ;;
         *)
-            cargo check --target $TARGET
-            cargo check --examples --target $TARGET
+            cross check --target $TARGET
+            cross check --examples --target $TARGET
             ;;
     esac
 }
