@@ -7,6 +7,7 @@ main() {
             ;;
         *)
             cargo check --target $TARGET
+            cargo check --examples --target $TARGET
             ;;
     esac
 }
