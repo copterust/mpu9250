@@ -2,11 +2,13 @@
 //!
 //! # Connections
 //!
+//! IMPORTANT: Do *not* use PIN24 / BCM8 / CE0 as the NCS pin
+//!
 //! - PIN1 = 3V3 = VCC
-//! - PIN19 = BCM10 = MOSI
-//! - PIN21 = BCM9 = MISO (SCL)
-//! - PIN23 = BCM11 = SCLK
-//! - PIN24 = BCM8 = NCS
+//! - PIN19 = BCM10 = MOSI (SDA)
+//! - PIN21 = BCM9 = MISO (AD0)
+//! - PIN23 = BCM11 = SCLK (SCL)
+//! - PIN22 = BCM25 = NCS
 //! - PIN6 = GND = GND
 
 extern crate embedded_hal as hal;
@@ -64,8 +66,9 @@ fn main() {
         .build();
     spi.configure(&options).unwrap();
 
-    let ncs = Pin::new(8);
+    let ncs = Pin::new(25);
     ncs.export().unwrap();
+    while !ncs.is_exported() {}
     ncs.set_value(1).unwrap();
     ncs.set_direction(Direction::Out).unwrap();
 
@@ -73,11 +76,11 @@ fn main() {
 
     let who_am_i = mpu9250.who_am_i().unwrap();
 
-    println!("WHO_AM_I: {}", who_am_i);
+    println!("WHO_AM_I: 0x{:x}", who_am_i);
 
     assert_eq!(who_am_i, 0x71);
 
     let measurements = mpu9250.all().unwrap();
 
-    println!("{:?}", measurements);
+    println!("{:#?}", measurements);
 }
