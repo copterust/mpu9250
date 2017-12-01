@@ -17,6 +17,8 @@ extern crate spidev;
 extern crate sysfs_gpio;
 
 use std::io::{self, Write};
+use std::thread;
+use std::time::Duration;
 
 use mpu9250::Mpu9250;
 use spidev::{Spidev, SpidevOptions, SpidevTransfer};
@@ -69,18 +71,23 @@ fn main() {
     let ncs = Pin::new(25);
     ncs.export().unwrap();
     while !ncs.is_exported() {}
-    ncs.set_value(1).unwrap();
     ncs.set_direction(Direction::Out).unwrap();
+    ncs.set_value(1).unwrap();
 
-    let mut mpu9250 = Mpu9250::new(MySpidev(spi), MyPin(ncs));
+    let mut mpu9250 = Mpu9250::new(MySpidev(spi), MyPin(ncs)).unwrap();
 
     let who_am_i = mpu9250.who_am_i().unwrap();
+    let ak8963_who_am_i = mpu9250.ak8963_who_am_i().unwrap();
 
     println!("WHO_AM_I: 0x{:x}", who_am_i);
+    println!("AK8963_WHO_AM_I: 0x{:x}", who_am_i);
 
     assert_eq!(who_am_i, 0x71);
+    assert_eq!(ak8963_who_am_i, 0x48);
 
-    let measurements = mpu9250.all().unwrap();
+    println!("{:#?}", mpu9250.all().unwrap());
 
-    println!("{:#?}", measurements);
+    thread::sleep(Duration::from_millis(100));
+
+    println!("{:#?}", mpu9250.all().unwrap());
 }
