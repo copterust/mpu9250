@@ -1,4 +1,6 @@
+dist: trusty
 language: rust
+services: docker
 
 matrix:
   include:
