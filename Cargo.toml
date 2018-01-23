@@ -10,6 +10,5 @@ embedded-hal = "0.1.0"
 default-features = false
 version = "0.2.2"
 
-[dev-dependencies]
-# linux-embedded-hal = "0.1.0"
-linux-embedded-hal = { git = "https://github.com/japaric/linux-embedded-hal" }
+[dev-dependencies.linux-embedded-hal]
+git = "https://github.com/japaric/linux-embedded-hal"
