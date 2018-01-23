@@ -14,7 +14,8 @@ main() {
                 sh -s -- \
                    --force \
                    --git japaric/xargo \
-                   --tag $tag
+                   --tag $tag \
+                   --target x86_64-unknown-linux-musl
             ;;
         *)
             # This fetches latest stable release of Cross
@@ -28,7 +29,8 @@ main() {
                 sh -s -- \
                    --force \
                    --git japaric/cross \
-                   --tag $tag
+                   --tag $tag \
+                   --target x86_64-unknown-linux-musl
             ;;
     esac
 }
