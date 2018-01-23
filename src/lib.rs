@@ -14,8 +14,10 @@ use core::marker::Unsize;
 use core::mem;
 
 use cast::u16;
-use hal::blocking::spi::{self, Mode, Phase, Polarity};
+use hal::blocking::delay::DelayMs;
+use hal::blocking::spi;
 use hal::digital::OutputPin;
+use hal::spi::{Mode, Phase, Polarity};
 
 /// MPU9250 driver
 pub struct Mpu9250<SPI, NCS> {
@@ -23,18 +25,23 @@ pub struct Mpu9250<SPI, NCS> {
     ncs: NCS,
 }
 
-impl<SPI, NCS> Mpu9250<SPI, NCS>
+impl<E, SPI, NCS> Mpu9250<SPI, NCS>
 where
-    SPI: spi::FullDuplex<u8>,
+    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
     NCS: OutputPin,
 {
     /// Creates a new driver from a SPI peripheral and a NCS pin
-    pub fn new(spi: SPI, ncs: NCS) -> Result<Self, SPI::Error> {
+    pub fn new<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
+    where
+        D: DelayMs<u8>,
+    {
         let mut mpu9250 = Mpu9250 { spi, ncs };
 
-        // XXX this probably needs some delay to be reliable
         // soft reset the device
         mpu9250.write(Register::PwrMgmt1, 0x80)?;
+
+        // XXX is this enough?
+        delay.delay_ms(1);
 
         // use the best clock
         mpu9250.write(Register::PwrMgmt1, 0x01)?;
@@ -58,6 +65,9 @@ where
         // FIXME this hangs when compiled in release mode
         mpu9250.ak8963_write(ak8963::Register::Cntl2, 0x01)?;
 
+        // XXX is this enough?
+        delay.delay_ms(1);
+
         // 100 Hz (?) continuous measurement, 16-bit
         mpu9250.ak8963_write(ak8963::Register::Cntl1, 0x16)?;
 
@@ -70,7 +80,7 @@ where
     }
 
     /// Accelerometer measurements
-    pub fn accel(&mut self) -> Result<I16x3, SPI::Error> {
+    pub fn accel(&mut self) -> Result<I16x3, E> {
         let buffer: [u8; 7] = self.read_many(Register::AccelXoutH)?;
 
         Ok(I16x3 {
@@ -81,12 +91,12 @@ where
     }
 
     /// Reads the AK8963 (magnetometer) WHO_AM_I register; should return `0x48`
-    pub fn ak8963_who_am_i(&mut self) -> Result<u8, SPI::Error> {
+    pub fn ak8963_who_am_i(&mut self) -> Result<u8, E> {
         self.ak8963_read(ak8963::Register::Wia)
     }
 
     /// Accelerometer + Gyroscope + Temperature sensor measurements
-    pub fn all(&mut self) -> Result<Measurements, SPI::Error> {
+    pub fn all(&mut self) -> Result<Measurements, E> {
         let buffer: [u8; 22] = self.read_many(Register::AccelXoutH)?;
 
         let accel = I16x3 {
@@ -109,11 +119,16 @@ where
             z: ((u16(buffer[20]) << 8) + u16(buffer[19])) as i16,
         };
 
-        Ok(Measurements { accel, gyro, temp, mag })
+        Ok(Measurements {
+            accel,
+            gyro,
+            temp,
+            mag,
+        })
     }
 
     /// Gyroscope measurements
-    pub fn gyro(&mut self) -> Result<I16x3, SPI::Error> {
+    pub fn gyro(&mut self) -> Result<I16x3, E> {
         let buffer: [u8; 7] = self.read_many(Register::GyroXOutH)?;
 
         Ok(I16x3 {
@@ -124,7 +139,7 @@ where
     }
 
     /// Magnetometer measurements
-    pub fn mag(&mut self) -> Result<I16x3, SPI::Error> {
+    pub fn mag(&mut self) -> Result<I16x3, E> {
         let buffer: [u8; 8] = self.read_many(Register::ExtSensData00)?;
 
         Ok(I16x3 {
@@ -135,7 +150,7 @@ where
     }
 
     /// Temperature sensor measurements
-    pub fn temp(&mut self) -> Result<u16, SPI::Error> {
+    pub fn temp(&mut self) -> Result<u16, E> {
         let buffer: [u8; 3] = self.read_many(Register::TempOutH)?;
 
         Ok(u16(buffer[1]) << 8 + u16(buffer[2]))
@@ -147,11 +162,11 @@ where
     }
 
     /// Reads the WHO_AM_I register; should return `0x71`
-    pub fn who_am_i(&mut self) -> Result<u8, SPI::Error> {
+    pub fn who_am_i(&mut self) -> Result<u8, E> {
         self.read(Register::WhoAmI)
     }
 
-    fn ak8963_read(&mut self, reg: ak8963::Register) -> Result<u8, SPI::Error> {
+    fn ak8963_read(&mut self, reg: ak8963::Register) -> Result<u8, E> {
         self.write(Register::I2cSlv4Addr, ak8963::I2C_ADDRESS | ak8963::R)?;
         self.write(Register::I2cSlv4Reg, reg.addr())?;
 
@@ -164,7 +179,7 @@ where
         self.read(Register::I2cSlv4Di)
     }
 
-    fn ak8963_write(&mut self, reg: ak8963::Register, val: u8) -> Result<(), SPI::Error> {
+    fn ak8963_write(&mut self, reg: ak8963::Register, val: u8) -> Result<(), E> {
         self.write(Register::I2cSlv4Addr, ak8963::I2C_ADDRESS | ak8963::W)?;
         self.write(Register::I2cSlv4Reg, reg.addr())?;
         self.write(Register::I2cSlv4Do, val)?;
@@ -178,12 +193,12 @@ where
         Ok(())
     }
 
-    fn read(&mut self, reg: Register) -> Result<u8, SPI::Error> {
+    fn read(&mut self, reg: Register) -> Result<u8, E> {
         let buffer: [u8; 2] = self.read_many(reg)?;
         Ok(buffer[1])
     }
 
-    fn read_many<B>(&mut self, reg: Register) -> Result<B, SPI::Error>
+    fn read_many<B>(&mut self, reg: Register) -> Result<B, E>
     where
         B: Unsize<[u8]>,
     {
@@ -199,7 +214,7 @@ where
         Ok(buffer)
     }
 
-    fn write(&mut self, reg: Register, val: u8) -> Result<(), SPI::Error> {
+    fn write(&mut self, reg: Register, val: u8) -> Result<(), E> {
         self.ncs.set_low();
         self.spi.write(&[reg.write_address(), val])?;
         self.ncs.set_high();

@@ -1,6 +1,6 @@
+dist: trusty
 language: rust
 services: docker
-sudo: required
 
 matrix:
   include:

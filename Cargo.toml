@@ -3,15 +3,12 @@ authors = ["Jorge Aparicio <jorge@japaric.io>"]
 name = "mpu9250"
 version = "0.1.0"
 
+[dependencies]
+embedded-hal = "0.1.0"
+
 [dependencies.cast]
 default-features = false
 version = "0.2.2"
 
-[dependencies.embedded-hal]
-git = "https://github.com/japaric/embedded-hal"
-
-[dev-dependencies.spidev]
-version = "0.3.0"
-
-[dev-dependencies.sysfs_gpio]
-version = "0.5.1"
+[dev-dependencies.linux-embedded-hal]
+git = "https://github.com/japaric/linux-embedded-hal"
