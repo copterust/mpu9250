@@ -1,4 +1,21 @@
 //! A WIP, no_std, generic driver for the MPU9250 (accelerometer + gyroscope + magnetometer IMU)
+//!
+//! # Connections
+//!
+//! - NCS
+//! - SCL = SCK
+//! - SDA = SDI = MOSI
+//! - AD0 = SDO = MISO
+//!
+//! # References
+//!
+//! - [Product specification][1]
+//!
+//! [1]: https://www.invensense.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf
+//!
+//! - [Register map][2]
+//!
+//! [2]: https://www.invensense.com/wp-content/uploads/2015/02/RM-MPU-9250A-00-v1.6.pdf
 
 #![deny(missing_docs)]
 #![deny(warnings)]
@@ -31,6 +48,12 @@ where
     NCS: OutputPin,
 {
     /// Creates a new driver from a SPI peripheral and a NCS pin
+    ///
+    /// # Defaults
+    ///
+    /// - Accelerometer: 16 bits, range [-2g, +2g]
+    /// - Gyroscope: 16 bits, range [-250 dps, +250 dps]
+    /// - Magnetometer: 16 bits, range [-4912 uT, +4912 uT], sensitivity: 0.15 uT / LSB
     pub fn new<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
     where
         D: DelayMs<u8>,
