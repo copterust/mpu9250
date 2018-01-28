@@ -8,10 +8,10 @@ pub const W: u8 = 0 << 7;
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum Register {
-    Cntl1 = 0x0a,
-    Cntl2 = 0x0b,
-    Hxl = 0x03,
-    Wia = 0x00,
+    CNTL1 = 0x0a,
+    CNTL2 = 0x0b,
+    HXL = 0x03,
+    WIA = 0x00,
 }
 
 impl Register {
