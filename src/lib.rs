@@ -245,7 +245,7 @@ where
 
     /// Set accelerometer reading scale
     pub fn a_scale(&mut self, scale: FSScale) -> Result<(), E> {
-        self.modify(Register::ACCEL_CONFIG, |r| (r & !0b11000) | (scale as u8 << 3))?;
+        self.modify(Register::ACCEL_CONFIG, |r| (r & !0b11000) | ((scale as u8) << 3))?;
         Ok(())
     }
 
@@ -280,7 +280,7 @@ where
 
     /// Set gyroscope reading scale
     pub fn g_scale(&mut self, scale: FSScale) -> Result<(), E> {
-        self.modify(Register::GYRO_CONFIG, |r| (r & !0b11000) | (scale as u8 << 3))?;
+        self.modify(Register::GYRO_CONFIG, |r| (r & !0b11000) | ((scale as u8) << 3))?;
 
         Ok(())
     }
