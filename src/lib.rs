@@ -243,6 +243,12 @@ where
         Ok(())
     }
 
+    /// Set accelerometer reading scale
+    pub fn a_scale(&mut self, scale: FSScale) -> Result<(), E> {
+        self.modify(Register::ACCEL_CONFIG, |r| (r & !0b11000) | ((scale as u8) << 3))?;
+        Ok(())
+    }
+
     /// Accelerometer YZ measurements
     pub fn aryz(&mut self) -> Result<(i16, i16), E> {
         let buffer: [u8; 5] = self.read_many(Register::ACCEL_YOUT_H)?;
@@ -268,6 +274,13 @@ where
     /// Applies a digital low pass filter to the gyroscope data
     pub fn g_filter(&mut self, dlpf: Dlpf) -> Result<(), E> {
         self.modify(Register::CONFIG, |r| (r & !0b11) | dlpf as u8)?;
+
+        Ok(())
+    }
+
+    /// Set gyroscope reading scale
+    pub fn g_scale(&mut self, scale: FSScale) -> Result<(), E> {
+        self.modify(Register::GYRO_CONFIG, |r| (r & !0b11000) | ((scale as u8) << 3))?;
 
         Ok(())
     }
@@ -382,6 +395,7 @@ pub const MODE: Mode = Mode {
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 enum Register {
+    ACCEL_CONFIG = 0x1c,
     ACCEL_CONFIG_2 = 0x1d,
     ACCEL_XOUT_H = 0x3b,
     ACCEL_YOUT_H = 0x3d,
@@ -391,6 +405,7 @@ enum Register {
     EXT_SENS_DATA_02 = 0x4b,
     EXT_SENS_DATA_03 = 0x4c,
     EXT_SENS_DATA_04 = 0x4d,
+    GYRO_CONFIG = 0x1b,
     GYRO_XOUT_H = 0x43,
     I2C_MST_CTRL = 0x24,
     I2C_MST_STATUS = 0x36,
@@ -477,4 +492,16 @@ pub enum Dlpf {
     _6 = 6,
     /// Accelerometer = 460 Hz, Gyroscope: 3600 Hz, Temperature sensor = 4000 Hz
     _7 = 7,
+}
+
+/// Sensor reading full scale configuration
+pub enum FSScale {
+    /// Accelerometer = +2g, Gyroscope: +250 dps
+    _00 = 0b00,
+    /// Accelerometer = +4g, Gyroscope: +500 dps
+    _01 = 0b01,
+    /// Accelerometer = +8g, Gyroscope: +1000 dps
+    _02 = 0b10,
+    /// Accelerometer = +16g, Gyroscope: +2000 dps
+    _03 = 0b11,
 }
