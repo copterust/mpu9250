@@ -71,18 +71,15 @@ where
 
     // soft reset the device
     mpu9250.write(Register::PWR_MGMT_1, 0x80)?;
-
-    // XXX is this enough?
-    delay.delay_ms(1);
+    delay.delay_ms(100);
+    mpu9250.write(Register::PWR_MGMT_1, 0x00)?;
 
     // use the best clock
     mpu9250.write(Register::PWR_MGMT_1, 0x01)?;
 
     // XXX do we need another delay here?
 
-    // sanity check that both the accelerometer and gyroscope are enabled
-    // (this should be the default after a soft reset)
-    debug_assert_eq!(mpu9250.read(Register::PWR_MGMT_2)?, 0x00);
+    mpu9250.write(Register::PWR_MGMT_2, 0x00)?;
 
     if TypeId::of::<MODE>() == TypeId::of::<Marg>() {
         // isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
