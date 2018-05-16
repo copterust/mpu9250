@@ -19,19 +19,21 @@
 
 #![deny(missing_docs)]
 #![deny(warnings)]
-#![feature(unsize)]
 #![no_std]
 
 extern crate cast;
 extern crate embedded_hal as hal;
+extern crate generic_array;
 
 mod ak8963;
 
 use core::any::{Any, TypeId};
-use core::marker::{PhantomData, Unsize};
+use core::marker::PhantomData;
 use core::mem;
 
 use cast::u16;
+use generic_array::typenum::consts::*;
+use generic_array::{ArrayLength, GenericArray};
 use hal::blocking::delay::DelayMs;
 use hal::blocking::spi;
 use hal::digital::OutputPin;
@@ -133,7 +135,7 @@ where
 
     /// Accelerometer + Gyroscope + Temperature sensor measurements
     pub fn all(&mut self) -> Result<ImuMeasurements, E> {
-        let buffer: [u8; 15] = self.read_many(Register::ACCEL_XOUT_H)?;
+        let buffer = self.read_many::<U15>(Register::ACCEL_XOUT_H)?;
 
         let accel = I16x3 {
             x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
@@ -178,7 +180,7 @@ where
 
     /// Accelerometer + Gyroscope + Temperature sensor measurements
     pub fn all(&mut self) -> Result<MargMeasurements, E> {
-        let buffer: [u8; 21] = self.read_many(Register::ACCEL_XOUT_H)?;
+        let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
 
         let accel = I16x3 {
             x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
@@ -210,7 +212,7 @@ where
 
     /// Magnetometer measurements
     pub fn mag(&mut self) -> Result<I16x3, E> {
-        let buffer: [u8; 8] = self.read_many(Register::EXT_SENS_DATA_00)?;
+        let buffer = self.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
 
         Ok(I16x3 {
             x: ((u16(buffer[2]) << 8) + u16(buffer[1])) as i16,
@@ -227,7 +229,7 @@ where
 {
     /// Accelerometer measurements
     pub fn accel(&mut self) -> Result<I16x3, E> {
-        let buffer: [u8; 7] = self.read_many(Register::ACCEL_XOUT_H)?;
+        let buffer = self.read_many::<U7>(Register::ACCEL_XOUT_H)?;
 
         Ok(I16x3 {
             x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
@@ -245,13 +247,15 @@ where
 
     /// Set accelerometer reading scale
     pub fn a_scale(&mut self, scale: FSScale) -> Result<(), E> {
-        self.modify(Register::ACCEL_CONFIG, |r| (r & !0b11000) | ((scale as u8) << 3))?;
+        self.modify(Register::ACCEL_CONFIG, |r| {
+            (r & !0b11000) | ((scale as u8) << 3)
+        })?;
         Ok(())
     }
 
     /// Accelerometer YZ measurements
     pub fn aryz(&mut self) -> Result<(i16, i16), E> {
-        let buffer: [u8; 5] = self.read_many(Register::ACCEL_YOUT_H)?;
+        let buffer = self.read_many::<U5>(Register::ACCEL_YOUT_H)?;
 
         let y = ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16;
         let z = ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16;
@@ -261,7 +265,7 @@ where
 
     /// Accelerometer YZ + temperature sensor + gyroscope X measurements
     pub fn aryz_t_gx(&mut self) -> Result<(i16, i16, i16, i16), E> {
-        let buffer: [u8; 9] = self.read_many(Register::ACCEL_YOUT_H)?;
+        let buffer = self.read_many::<U9>(Register::ACCEL_YOUT_H)?;
 
         let y = ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16;
         let z = ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16;
@@ -280,14 +284,16 @@ where
 
     /// Set gyroscope reading scale
     pub fn g_scale(&mut self, scale: FSScale) -> Result<(), E> {
-        self.modify(Register::GYRO_CONFIG, |r| (r & !0b11000) | ((scale as u8) << 3))?;
+        self.modify(Register::GYRO_CONFIG, |r| {
+            (r & !0b11000) | ((scale as u8) << 3)
+        })?;
 
         Ok(())
     }
 
     /// Gyroscope measurements
     pub fn gyro(&mut self) -> Result<I16x3, E> {
-        let buffer: [u8; 7] = self.read_many(Register::GYRO_XOUT_H)?;
+        let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
 
         Ok(I16x3 {
             x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
@@ -298,14 +304,14 @@ where
 
     /// Gyroscope X measurement
     pub fn gx(&mut self) -> Result<i16, E> {
-        let buffer: [u8; 3] = self.read_many(Register::GYRO_XOUT_H)?;
+        let buffer = self.read_many::<U3>(Register::GYRO_XOUT_H)?;
 
         Ok(((u16(buffer[1]) << 8) + u16(buffer[2])) as i16)
     }
 
     /// Temperature sensor measurements
     pub fn temp(&mut self) -> Result<i16, E> {
-        let buffer: [u8; 3] = self.read_many(Register::TEMP_OUT_H)?;
+        let buffer = self.read_many::<U3>(Register::TEMP_OUT_H)?;
 
         Ok((u16(buffer[1]) << 8 + u16(buffer[2])) as i16)
     }
@@ -357,15 +363,15 @@ where
     }
 
     fn read(&mut self, reg: Register) -> Result<u8, E> {
-        let buffer: [u8; 2] = self.read_many(reg)?;
+        let buffer = self.read_many::<U2>(reg)?;
         Ok(buffer[1])
     }
 
-    fn read_many<B>(&mut self, reg: Register) -> Result<B, E>
+    fn read_many<N>(&mut self, reg: Register) -> Result<GenericArray<u8, N>, E>
     where
-        B: Unsize<[u8]>,
+        N: ArrayLength<u8>,
     {
-        let mut buffer: B = unsafe { mem::zeroed() };
+        let mut buffer: GenericArray<u8, N> = unsafe { mem::zeroed() };
         {
             let slice: &mut [u8] = &mut buffer;
             slice[0] = reg.read_address();

@@ -1,13 +1,13 @@
 set -euxo pipefail
 
 main() {
+    cargo check --target $TARGET
+
     case $TARGET in
-        thumbv*-none-eabi*)
-            xargo check --target $TARGET
+        armv*)
+            cargo check --examples --target $TARGET
             ;;
         *)
-            cross check --target $TARGET
-            cross check --examples --target $TARGET
             ;;
     esac
 }
