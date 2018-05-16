@@ -10,6 +10,3 @@ generic-array = "0.11.0"
 [dependencies.cast]
 default-features = false
 version = "0.2.2"
-
-[dev-dependencies]
-linux-embedded-hal = "0.2.0"
