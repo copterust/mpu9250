@@ -1,21 +1,16 @@
-dist: trusty
 language: rust
-services: docker
 
 matrix:
   include:
     - env: TARGET=x86_64-unknown-linux-gnu
-      rust: nightly
+
     - env: TARGET=armv7-unknown-linux-gnueabihf
-      rust: nightly
+
     - env: TARGET=thumbv6m-none-eabi
-      rust: nightly
+      rust: beta
+
     - env: TARGET=thumbv7m-none-eabi
-      rust: nightly
-    - env: TARGET=thumbv7em-none-eabi
-      rust: nightly
-    - env: TARGET=thumbv7em-none-eabihf
-      rust: nightly
+      rust: beta
 
 before_install: set -e
 
@@ -34,9 +29,8 @@ before_cache:
 
 branches:
   only:
-    - auto
-    - master
-    - try
+    - trying
+    - staging
 
 notifications:
   email:

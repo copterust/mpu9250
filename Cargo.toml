@@ -4,11 +4,9 @@ name = "mpu9250"
 version = "0.1.0"
 
 [dependencies]
-embedded-hal = "0.1.0"
+embedded-hal = "0.2.0"
+generic-array = "0.11.0"
 
 [dependencies.cast]
 default-features = false
 version = "0.2.2"
-
-[dev-dependencies.linux-embedded-hal]
-git = "https://github.com/japaric/linux-embedded-hal"
