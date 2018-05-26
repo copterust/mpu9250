@@ -70,16 +70,64 @@ where
     };
 
     // soft reset the device
-    mpu9250.write(Register::PWR_MGMT_1, 0x80)?;
-    delay.delay_ms(100);
+    // mpu9250.write(Register::PWR_MGMT_1, 0x80)?;
     mpu9250.write(Register::PWR_MGMT_1, 0x00)?;
+    delay.delay_ms(100);
 
     // use the best clock
     mpu9250.write(Register::PWR_MGMT_1, 0x01)?;
+    delay.delay_ms(200);
 
-    // XXX do we need another delay here?
+    // Configure Gyro and Thermometer
+    // Disable FSYNC and set thermometer and gyro bandwidth to 41 and 42 Hz, respectively;
+    // minimum delay time for this setting is 5.9 ms, which means sensor fusion update rates cannot
+    // be higher than 1 / 0.0059 = 170 Hz
+    // DLPF_CFG = bits 2:0 = 011; this limits the sample rate to 1000 Hz for both
+    // With the MPU9250, it is possible to get gyro sample rates of 32 kHz (!), 8 kHz, or 1 kHz
+    mpu9250.write(Register::CONFIG, 0x03)?;
 
-    mpu9250.write(Register::PWR_MGMT_2, 0x00)?;
+    // Set sample rate = gyroscope output rate/(1 + SMPLRT_DIV)
+    mpu9250.write(Register::SMPLRT_DIV, 0x04)?; // Use a 200 Hz rate; a rate consistent with the filter update rate
+                                                // determined inset in CONFIG above
+
+    // Set gyroscope full scale range
+    // Range selects FS_SEL and AFS_SEL are 0 - 3, so 2-bit values are left-shifted into positions 4:3
+    let mut c = mpu9250.read(Register::GYRO_CONFIG)?; // get current GYRO_CONFIG register value
+                                                      // c = c & ~0xE0; // Clear self-test bits [7:5]
+    c = c & !0x02; // Clear Fchoice bits [1:0]
+    c = c & !0x18; // Clear AFS bits [4:3]
+    c = c | 0 << 3; // Set full scale range for the gyro
+                    // c =| 0x00; // Set Fchoice for the gyro to 11 by writing its inverse to bits 1:0 of GYRO_CONFIG
+    mpu9250.write(Register::GYRO_CONFIG, c)?; // Write new GYRO_CONFIG value to register
+
+    // Set accelerometer full-scale range configuration
+    c = mpu9250.read(Register::ACCEL_CONFIG)?; // get current ACCEL_CONFIG register value
+                                               // c = c & ~0xE0; // Clear self-test bits [7:5]
+    c = c & !0x18; // Clear AFS bits [4:3]
+    c = c | 0 << 3; // Set full scale range for the accelerometer
+    mpu9250.write(Register::ACCEL_CONFIG, c)?; // Write new ACCEL_CONFIG register value
+
+    // Set accelerometer sample rate configuration
+    // It is possible to get a 4 kHz sample rate from the accelerometer by choosing 1 for
+    // accel_fchoice_b bit [3]; in this case the bandwidth is 1.13 kHz
+    c = mpu9250.read(Register::ACCEL_CONFIG_2)?; // get current ACCEL_CONFIG2 register value
+    c = c & !0x0F; // Clear accel_fchoice_b (bit 3) and A_DLPFG (bits [2:0])
+    c = c | 0x03; // Set accelerometer rate to 1 kHz and bandwidth to 41 Hz
+    mpu9250.write(Register::ACCEL_CONFIG_2, c)?; // Write new ACCEL_CONFIG2 register value
+
+    // The accelerometer, gyro, and thermometer are set to 1 kHz sample rates,
+    // but all these rates are further reduced by a factor of 5 to 200 Hz because of the SMPLRT_DIV setting
+
+    // Configure Interrupts and Bypass Enable
+    // Set interrupt pin active high, push-pull, hold interrupt pin level HIGH until interrupt cleared,
+    // clear on read of INT_STATUS, and enable I2C_BYPASS_EN so additional chips
+    // can join the I2C bus and all can be controlled by the Arduino as master
+    //   writeByte(MPU9250_ADDRESS, INT_PIN_CFG, 0x22);
+    mpu9250.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
+    mpu9250.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
+    delay.delay_ms(100);
+
+    // mpu9250.write(Register::PWR_MGMT_2, 0x00)?;
 
     if TypeId::of::<MODE>() == TypeId::of::<Marg>() {
         // isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
@@ -409,6 +457,7 @@ enum Register {
     EXT_SENS_DATA_03 = 0x4c,
     EXT_SENS_DATA_04 = 0x4d,
     GYRO_CONFIG = 0x1b,
+    SMPLRT_DIV = 0x19,
     GYRO_XOUT_H = 0x43,
     I2C_MST_CTRL = 0x24,
     I2C_MST_STATUS = 0x36,
@@ -422,6 +471,7 @@ enum Register {
     I2C_SLV4_DO = 0x33,
     I2C_SLV4_REG = 0x32,
     INT_PIN_CFG = 0x37,
+    INT_ENABLE = 0x38,
     PWR_MGMT_1 = 0x6b,
     PWR_MGMT_2 = 0x6c,
     TEMP_OUT_H = 0x41,
