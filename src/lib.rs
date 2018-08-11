@@ -49,8 +49,83 @@ pub struct Marg;
 pub struct Mpu9250<SPI, NCS, MODE> {
     spi: SPI,
     ncs: NCS,
+    mag_sensitivity_adj: F32x3,
+    accel_resolution: f32,
+    gyro_resolution: f32,
+    mag_resolution: f32,
     _mode: PhantomData<MODE>,
 }
+
+#[allow(non_camel_case_types)]
+/// GSCALE
+pub enum Gscale {
+    /// 250DPS
+    GFS_250DPS = 0,
+    /// 500DPS
+    GFS_500DPS,
+    /// 1000DPS
+    GFS_1000DPS,
+    /// 2000DPS
+    GFS_2000DPS,
+}
+impl Gscale {
+    fn resolution(&self) -> f32 {
+        match self {
+            Gscale::GFS_250DPS => 250.0 / 32768.0,
+            Gscale::GFS_500DPS => 500.0 / 32768.0,
+            Gscale::GFS_1000DPS => 1000.0 / 32768.0,
+            Gscale::GFS_2000DPS => 2000.0 / 32768.0,
+        }
+    }
+}
+// default
+const GSCALE: Gscale = Gscale::GFS_250DPS;
+
+#[allow(non_camel_case_types)]
+/// ASCALE
+pub enum Ascale {
+    /// 2G
+    AFS_2G = 0,
+    /// 4G
+    AFS_4G,
+    /// 8G
+    AFS_8G,
+    /// 16G
+    AFS_16G,
+}
+impl Ascale {
+    fn resolution(&self) -> f32 {
+        match self {
+            Ascale::AFS_2G => 2.0 / 32768.0,
+            Ascale::AFS_4G => 4.0 / 32768.0,
+            Ascale::AFS_8G => 8.0 / 32768.0,
+            Ascale::AFS_16G => 16.0 / 32768.0,
+        }
+    }
+}
+// default
+const ASCALE: Ascale = Ascale::AFS_2G;
+
+#[allow(non_camel_case_types)]
+/// MSCALE
+pub enum Mscale {
+    /// 0.6 mG per LSB
+    MFS_14BITS = 0,
+    /// 0.15 mG per LSB
+    MFS_16BITS,
+}
+impl Mscale {
+    fn resolution(&self) -> f32 {
+        match self {
+            Mscale::MFS_14BITS => 10. * 4912. / 8190.,
+            Mscale::MFS_16BITS => 10. * 4912. / 32760.0,
+        }
+    }
+}
+// default
+const MSCALE: Mscale = Mscale::MFS_16BITS;
+// 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
+const MMODE: u8 = 0x06;
 
 fn new<SPI, NCS, MODE, D, E>(
     spi: SPI,
@@ -66,15 +141,23 @@ where
     let mut mpu9250 = Mpu9250 {
         spi,
         ncs,
+        mag_sensitivity_adj: F32x3 {
+            x: 0.,
+            y: 0.,
+            z: 0.,
+        },
+        accel_resolution: ASCALE.resolution(),
+        gyro_resolution: GSCALE.resolution(),
+        mag_resolution: MSCALE.resolution(),
         _mode: PhantomData,
     };
 
-    // soft reset the device
-    // mpu9250.write(Register::PWR_MGMT_1, 0x80)?;
-    mpu9250.write(Register::PWR_MGMT_1, 0x00)?;
-    delay.delay_ms(100);
+    // wake up device
+    mpu9250.write(Register::PWR_MGMT_1, 0x00)?; // Clear sleep mode bit (6), enable all sensors
+    delay.delay_ms(100); // Wait for all registers to reset
 
-    // use the best clock
+    // get stable time source
+    // Auto select clock source to be PLL gyroscope reference if ready else
     mpu9250.write(Register::PWR_MGMT_1, 0x01)?;
     delay.delay_ms(200);
 
@@ -84,11 +167,51 @@ where
     // be higher than 1 / 0.0059 = 170 Hz
     // DLPF_CFG = bits 2:0 = 011; this limits the sample rate to 1000 Hz for both
     // With the MPU9250, it is possible to get gyro sample rates of 32 kHz (!), 8 kHz, or 1 kHz
+    //           r fifo ext_sync_set  dlpf
+    // 0x03 == 0b0 0    000           011
+    // XXX: SHOULD BE CONFIGURABLE: see https://www.invensense.com/wp-content/uploads/2015/02/RM-MPU-9250A-00-v1.6.pdf
+    // and https://www.invensense.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf
     mpu9250.write(Register::CONFIG, 0x03)?;
 
     // Set sample rate = gyroscope output rate/(1 + SMPLRT_DIV)
-    mpu9250.write(Register::SMPLRT_DIV, 0x04)?; // Use a 200 Hz rate; a rate consistent with the filter update rate
-                                                // determined inset in CONFIG above
+    // Use a 200 Hz rate; a rate consistent with the filter update rate determined inset in CONFIG above
+    mpu9250.write(Register::SMPLRT_DIV, 0x04)?;
+    // Set gyroscope full scale range
+    // Range selects FS_SEL and GFS_SEL are 0 - 3, so 2-bit values are left-shifted into positions 4:3
+    // get current GYRO_CONFIG register value
+    let mut c: u8 = mpu9250.read(Register::GYRO_CONFIG)?;
+    // c = c & ~0xE0; // Clear self-test bits [7:5]
+    // Clear Fchoice bits [1:0]
+    c = c & !0x03;
+    // Clear GFS bits [4:3]
+    c = c & !0x18;
+    // Set full scale range for the gyro
+    c = c | (GSCALE as u8) << 3;
+    // c =| 0x00; // Set Fchoice for the gyro to 11 by writing its inverse to bits 1:0 of GYRO_CONFIG
+    mpu9250.write(Register::GYRO_CONFIG, c)?; // Write new GYRO_CONFIG value to register
+
+    // Set accelerometer full-scale range configuration
+    c = mpu9250.read(Register::ACCEL_CONFIG)?;
+    // get current ACCEL_CONFIG register value
+    // c = c & ~0xE0; // Clear self-test bits [7:5]
+    // Clear AFS bits [4:3]
+    c = c & !0x18;
+    // Set full scale range for the accelerometer
+    c = c | (ASCALE as u8) << 3;
+    // Write new ACCEL_CONFIG register value
+    mpu9250.write(Register::ACCEL_CONFIG, c)?;
+
+    // Set accelerometer sample rate configuration
+    // It is possible to get a 4 kHz sample rate from the accelerometer by choosing 1 for
+    // accel_fchoice_b bit [3]; in this case the bandwidth is 1.13 kHz
+    // get current ACCEL_CONFIG2 register value
+    c = mpu9250.read(Register::ACCEL_CONFIG_2)?;
+    // Clear accel_fchoice_b (bit 3) and A_DLPFG (bits [2:0])
+    c = c & !0x0F;
+    // Set accelerometer rate to 1 kHz and bandwidth to 41 Hz
+    c = c | 0x03;
+    // Write new ACCEL_CONFIG2 register value
+    mpu9250.write(Register::ACCEL_CONFIG_2, c)?;
 
     // The accelerometer, gyro, and thermometer are set to 1 kHz sample rates,
     // but all these rates are further reduced by a factor of 5 to 200 Hz because of the SMPLRT_DIV setting
@@ -96,12 +219,10 @@ where
     // Configure Interrupts and Bypass Enable
     // Set interrupt pin active high, push-pull, hold interrupt pin level HIGH until interrupt cleared,
     // clear on read of INT_STATUS, and enable I2C_BYPASS_EN so additional chips
-    // can join the I2C bus and all can be controlled by the Arduino as master
+    // can join the I2C bus
     mpu9250.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
     mpu9250.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
     delay.delay_ms(100);
-
-    // mpu9250.write(Register::PWR_MGMT_2, 0x00)?;
 
     if TypeId::of::<MODE>() == TypeId::of::<Marg>() {
         // isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
@@ -109,29 +230,67 @@ where
         // reset the master I2C bus
         mpu9250.write(Register::USER_CTRL, 0x32)?;
 
+        // First extract the factory calibration for each magnetometer axis
+        // Power down magnetometer
+        mpu9250.ak8963_write(ak8963::Register::CNTL, 0x00)?;
+        delay.delay_ms(10);
+        // Enter Fuse ROM access mode
+        mpu9250.ak8963_write(ak8963::Register::CNTL, 0x0F)?;
+        delay.delay_ms(10);
+        // Read the x-, y-, and z-axis calibration values
+        let mag_x_bias = mpu9250.ak8963_read(ak8963::Register::ASAX)?;
+        let mag_y_bias = mpu9250.ak8963_read(ak8963::Register::ASAY)?;
+        let mag_z_bias = mpu9250.ak8963_read(ak8963::Register::ASAZ)?;
+        // Return x-axis sensitivity adjustment values, etc.
+        mpu9250.mag_sensitivity_adj = F32x3 {
+            x: ((mag_x_bias - 128) as f32) / 256. + 1.,
+            y: ((mag_y_bias - 128) as f32) / 256. + 1.,
+            z: ((mag_z_bias - 128) as f32) / 256. + 1.,
+        };
+        mpu9250.ak8963_write(ak8963::Register::CNTL, 0x00)?;
+        delay.delay_ms(10);
+        // Set magnetometer data resolution and sample ODR
+        mpu9250.ak8963_write(ak8963::Register::CNTL, (MSCALE as u8) << 4 | MMODE)?;
+        delay.delay_ms(10);
+
         // set aux I2C frequency to 400 KHz
         mpu9250.write(Register::I2C_MST_CTRL, 0x0d)?;
 
-        // sanity check that the aux I2C is working
-        debug_assert_eq!(mpu9250.ak8963_read(ak8963::Register::WIA)?, 0x48);
+        // // sanity check that the aux I2C is working
+        // debug_assert_eq!(mpu9250.ak8963_read(ak8963::Register::WIA)?, 0x48);
 
-        // software reset the magnetometer
-        // FIXME this hangs when compiled in release mode
-        mpu9250.ak8963_write(ak8963::Register::CNTL2, 0x01)?;
+        // // software reset the magnetometer
+        // // FIXME this hangs when compiled in release mode
+        // mpu9250.ak8963_write(ak8963::Register::CNTL_2, 0x01)?;
 
-        // XXX is this enough?
-        delay.delay_ms(1);
-
-        // 100 Hz (?) continuous measurement, 16-bit
-        mpu9250.ak8963_write(ak8963::Register::CNTL1, 0x16)?;
+        delay.delay_ms(10);
 
         // configure sampling of magnetometer
         mpu9250.write(Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
-        mpu9250.write(Register::I2C_SLV0_REG, ak8963::Register::HXL.addr())?;
+        mpu9250.write(Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
         mpu9250.write(Register::I2C_SLV0_CTRL, 0x87)?;
+
+        delay.delay_ms(10);
     }
 
     Ok(mpu9250)
+}
+
+impl<SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE> {
+    /// Returns accel resolution
+    pub fn accel_resolution(&self) -> f32 {
+        self.accel_resolution
+    }
+
+    /// Returns gyro resolution
+    pub fn gyro_resolution(&self) -> f32 {
+        self.gyro_resolution
+    }
+
+    /// Returns mag resolution
+    pub fn mag_resolution(&self) -> f32 {
+        self.mag_resolution
+    }
 }
 
 impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
@@ -192,9 +351,14 @@ where
         new(spi, ncs, delay)
     }
 
+    /// Returns factory mag sensitivity biases
+    pub fn mag_sensitivity_adj(&self) -> F32x3 {
+        self.mag_sensitivity_adj
+    }
+
     /// Reads the AK8963 (magnetometer) WHO_AM_I register; should return `0x48`
     pub fn ak8963_who_am_i(&mut self) -> Result<u8, E> {
-        self.ak8963_read(ak8963::Register::WIA)
+        self.ak8963_read(ak8963::Register::WHO_AM_I)
     }
 
     /// Accelerometer + Gyroscope + Temperature sensor measurements
@@ -475,6 +639,17 @@ pub struct I16x3 {
     pub y: i16,
     /// Z component
     pub z: i16,
+}
+
+/// Vector in 3D space
+#[derive(Clone, Copy, Debug)]
+pub struct F32x3 {
+    /// X component
+    pub x: f32,
+    /// Y component
+    pub y: f32,
+    /// Z component
+    pub z: f32,
 }
 
 /// IMU measurements
