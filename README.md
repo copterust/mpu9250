@@ -2,6 +2,8 @@
 
 > no_std driver for the MPU9250 & onboard AK8963 (accelerometer + gyroscope +  magnetometer IMU).
 
+[![Build Status](https://travis-ci.org/copterust/mpu9250.svg?branch=master)](https://travis-ci.org/copterust/mpu9250)
+
 ## What works
 
 - Reading the accelerometer, gyroscope, temperature sensor, and magnetrometer: both raw and scaled and converted values.
@@ -15,7 +17,7 @@ Include [library](https://crates.io/crates/mpu9250) as a dependency in your Carg
 
 ```
 [dependencies.mpu9250]
-version = "0.1.0"
+version = "0.2.0" # check most recent version on crates.io
 ```
 
 Use embedded-hal implementation to get SPI, NCS, and delay, then create mpu handle:
