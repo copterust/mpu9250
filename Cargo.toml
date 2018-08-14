@@ -1,7 +1,7 @@
 [package]
 authors = ["Roma Sokolov", "Alexander Zhuravlev", "Jorge Aparicio <jorge@japaric.io>"]
 name = "mpu9250"
-version = "0.2.0"
+version = "0.2.1"
 
 [dependencies]
 embedded-hal = "0.2.0"
