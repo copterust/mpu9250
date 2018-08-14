@@ -1,27 +1,41 @@
 # `mpu9250`
 
-> A WIP, no_std, generic driver for the MPU9250 (accelerometer + gyroscope + magnetometer IMU)
+> no_std driver for the MPU9250 & onboard AK8963 (accelerometer + gyroscope +  magnetometer IMU).
 
 ## What works
 
-- Reading the accelerometer, gyroscope and temperature sensor
-- Reading the WHO_AM_I register
+- Reading the accelerometer, gyroscope, temperature sensor, and magnetrometer: both raw and scaled and converted values.
+- Setting DLPF, reading scales, sample rate divisor.
+- Reading the WHO_AM_I registers of mpu9250 and ak8963.
+- Getting resolutions and factory sensitivities.
 
-## TODO
+## Basic usage
 
-- [x] Access to magnetometer data
-- [x] Make sure this works with the `spidev` crate (i.e. with the Raspberry Pi)
-- [ ] Configuration. e.g. selecting the accelerometer sensing range.
-- [ ] How to make the API compatible with device specific features like DMA?
-- [ ] Sensor fusion?
-- ???
+Include [library](https://crates.io/crates/mpu9250) as a dependency in your Cargo.toml:
 
-## Examples
+```
+[dependencies.mpu9250]
+version = "0.1.0"
+```
 
-You should find at least one example in the [blue-pill] repository. If that branch is gone, check
-the master branch.
+Use embedded-hal implementation to get SPI, NCS, and delay, then create mpu handle:
 
-[blue-pill]: https://github.com/japaric/blue-pill/tree/singletons/examples
+```rust
+extern crate mpu9250; // or just use mpu9250; if 2018 edition is used.
+
+// to create sensor with mag support and default configuration:
+let mut _imu = Mpu9250::marg_default(spi, ncs, &mut delay)?;
+// to create sensor without mag support and default configuration:
+let mut marg = Mpu9250::imu_default(spi, ncs, &mut delay)?;
+// to get all supported measurements:
+let all = marg.all()?;
+println!("{:?}", all);
+```
+
+## More examples
+
+Number of examples can be found in [proving-ground](https://github.com/copterust/proving-ground) repo.
+Examples include: reading temperature, calibrating magnetrometer, reading all sensors.
 
 ## License
 
@@ -33,8 +47,6 @@ Licensed under either of
 
 at your option.
 
-### Contribution
+## Testimonials
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the
-work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
+Started off as a fork of [japaric's mpu9250 repo](https://github.com/japaric/mpu9250).

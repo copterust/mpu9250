@@ -1,4 +1,5 @@
-//! A WIP, no_std, generic driver for the MPU9250 (accelerometer + gyroscope + magnetometer IMU)
+//! no_std driver for the MPU9250 & onboard AK8963 (accelerometer + gyroscope +
+//! magnetometer IMU)
 //!
 //! # Connections
 //!
@@ -7,15 +8,40 @@
 //! - SDA = SDI = MOSI
 //! - AD0 = SDO = MISO
 //!
+//! # Usage
+//!
+//! Use embedded-hal implementation to get SPI, NCS, and delay, then create mpu
+//! handle
+//!
+//! ```
+//! // to create sensor with mag support and default configuration:
+//! let mut mpu = Mpu9250::marg_default(spi, ncs, &mut delay)?;
+//! // to create sensor without mag support and default configuration:
+//! let mut mpu = Mpu9250::imu_default(spi, ncs, &mut delay)?;
+//! // to get all supported measurements:
+//! let all = mpu.all()?;
+//! println!("{:?}", all);
+//! ```
+//!
+//! More examples (for stm32) in [Proving ground] repo.
+//!
 //! # References
 //!
-//! - [Product specification][1]
+//! - [Product specification][2]
 //!
 //! [1]: https://www.invensense.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf
 //!
 //! - [Register map][2]
 //!
 //! [2]: https://www.invensense.com/wp-content/uploads/2015/02/RM-MPU-9250A-00-v1.6.pdf
+//!
+//! - [AK8963 specification][3]
+//!
+//! [3]: https://www.akm.com/akm/en/file/datasheet/AK8963C.pdf
+//!
+//! - [Proving ground][4]
+//!
+//! [4]: https://github.com/copterust/proving-ground
 
 #![deny(missing_docs)]
 #![deny(warnings)]
@@ -27,476 +53,538 @@ extern crate generic_array;
 
 mod ak8963;
 
-use core::any::{Any, TypeId};
+use core::default::Default;
 use core::marker::PhantomData;
 use core::mem;
+use core::ops::Mul;
 
-use cast::u16;
+use cast::{f32, u16};
 use generic_array::typenum::consts::*;
 use generic_array::{ArrayLength, GenericArray};
+
 use hal::blocking::delay::DelayMs;
 use hal::blocking::spi;
 use hal::digital::OutputPin;
 use hal::spi::{Mode, Phase, Polarity};
 
-/// Accelerometer + Gyroscope
+/// Marker trait for mode
+trait MpuMode {}
+/// Accelerometer + Gyroscope + Temperature Sensor
 pub struct Imu;
+impl MpuMode for Imu {}
 
-/// Magnetometer + Accelerometer + Gyroscope
+/// Magnetometer + Accelerometer + Gyroscope + Temperature Sensor
 pub struct Marg;
+impl MpuMode for Marg {}
 
 /// MPU9250 driver
 pub struct Mpu9250<SPI, NCS, MODE> {
     spi: SPI,
     ncs: NCS,
-    mag_sensitivity_adj: F32x3,
-    accel_resolution: f32,
-    gyro_resolution: f32,
-    mag_resolution: f32,
+    gyro_scale: GyroScale,
+    accel_scale: AccelScale,
+    mag_scale: MagScale,
+    raw_mag_sensitivity_adjustments: [u8; 3],
+    mag_sensitivity_adjustments: F32x3,
     _mode: PhantomData<MODE>,
 }
 
-#[allow(non_camel_case_types)]
-/// GSCALE
-pub enum Gscale {
-    /// 250DPS
-    GFS_250DPS = 0,
-    /// 500DPS
-    GFS_500DPS,
-    /// 1000DPS
-    GFS_1000DPS,
-    /// 2000DPS
-    GFS_2000DPS,
-}
-impl Gscale {
-    fn resolution(&self) -> f32 {
-        match self {
-            Gscale::GFS_250DPS => 250.0 / 32768.0,
-            Gscale::GFS_500DPS => 500.0 / 32768.0,
-            Gscale::GFS_1000DPS => 1000.0 / 32768.0,
-            Gscale::GFS_2000DPS => 2000.0 / 32768.0,
-        }
-    }
-}
-// default
-const GSCALE: Gscale = Gscale::GFS_250DPS;
-
-#[allow(non_camel_case_types)]
-/// ASCALE
-pub enum Ascale {
-    /// 2G
-    AFS_2G = 0,
-    /// 4G
-    AFS_4G,
-    /// 8G
-    AFS_8G,
-    /// 16G
-    AFS_16G,
-}
-impl Ascale {
-    fn resolution(&self) -> f32 {
-        match self {
-            Ascale::AFS_2G => 2.0 / 32768.0,
-            Ascale::AFS_4G => 4.0 / 32768.0,
-            Ascale::AFS_8G => 8.0 / 32768.0,
-            Ascale::AFS_16G => 16.0 / 32768.0,
-        }
-    }
-}
-// default
-const ASCALE: Ascale = Ascale::AFS_2G;
-
-#[allow(non_camel_case_types)]
-/// MSCALE
-pub enum Mscale {
-    /// 0.6 mG per LSB
-    MFS_14BITS = 0,
-    /// 0.15 mG per LSB
-    MFS_16BITS,
-}
-impl Mscale {
-    fn resolution(&self) -> f32 {
-        match self {
-            Mscale::MFS_14BITS => 10. * 4912. / 8190.,
-            Mscale::MFS_16BITS => 10. * 4912. / 32760.0,
-        }
-    }
-}
-// default
-const MSCALE: Mscale = Mscale::MFS_16BITS;
 // 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
 const MMODE: u8 = 0x06;
 
-fn new<SPI, NCS, MODE, D, E>(
-    spi: SPI,
-    ncs: NCS,
-    delay: &mut D,
-) -> Result<Mpu9250<SPI, NCS, MODE>, E>
-where
-    D: DelayMs<u8>,
-    MODE: Any,
-    NCS: OutputPin,
-    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-{
-    let mut mpu9250 = Mpu9250 {
-        spi,
-        ncs,
-        mag_sensitivity_adj: F32x3 {
-            x: 0.,
-            y: 0.,
-            z: 0.,
-        },
-        accel_resolution: ASCALE.resolution(),
-        gyro_resolution: GSCALE.resolution(),
-        mag_resolution: MSCALE.resolution(),
-        _mode: PhantomData,
-    };
-
-    // wake up device
-    mpu9250.write(Register::PWR_MGMT_1, 0x00)?; // Clear sleep mode bit (6), enable all sensors
-    delay.delay_ms(100); // Wait for all registers to reset
-
-    // get stable time source
-    // Auto select clock source to be PLL gyroscope reference if ready else
-    mpu9250.write(Register::PWR_MGMT_1, 0x01)?;
-    delay.delay_ms(200);
-
-    // Configure Gyro and Thermometer
-    // Disable FSYNC and set thermometer and gyro bandwidth to 41 and 42 Hz, respectively;
-    // minimum delay time for this setting is 5.9 ms, which means sensor fusion update rates cannot
-    // be higher than 1 / 0.0059 = 170 Hz
-    // DLPF_CFG = bits 2:0 = 011; this limits the sample rate to 1000 Hz for both
-    // With the MPU9250, it is possible to get gyro sample rates of 32 kHz (!), 8 kHz, or 1 kHz
-    //           r fifo ext_sync_set  dlpf
-    // 0x03 == 0b0 0    000           011
-    // XXX: SHOULD BE CONFIGURABLE: see https://www.invensense.com/wp-content/uploads/2015/02/RM-MPU-9250A-00-v1.6.pdf
-    // and https://www.invensense.com/wp-content/uploads/2015/02/PS-MPU-9250A-01-v1.1.pdf
-    mpu9250.write(Register::CONFIG, 0x03)?;
-
-    // Set sample rate = gyroscope output rate/(1 + SMPLRT_DIV)
-    // Use a 200 Hz rate; a rate consistent with the filter update rate determined inset in CONFIG above
-    mpu9250.write(Register::SMPLRT_DIV, 0x04)?;
-    // Set gyroscope full scale range
-    // Range selects FS_SEL and GFS_SEL are 0 - 3, so 2-bit values are left-shifted into positions 4:3
-    // get current GYRO_CONFIG register value
-    let mut c: u8 = mpu9250.read(Register::GYRO_CONFIG)?;
-    // c = c & ~0xE0; // Clear self-test bits [7:5]
-    // Clear Fchoice bits [1:0]
-    c = c & !0x03;
-    // Clear GFS bits [4:3]
-    c = c & !0x18;
-    // Set full scale range for the gyro
-    c = c | (GSCALE as u8) << 3;
-    // c =| 0x00; // Set Fchoice for the gyro to 11 by writing its inverse to bits 1:0 of GYRO_CONFIG
-    mpu9250.write(Register::GYRO_CONFIG, c)?; // Write new GYRO_CONFIG value to register
-
-    // Set accelerometer full-scale range configuration
-    c = mpu9250.read(Register::ACCEL_CONFIG)?;
-    // get current ACCEL_CONFIG register value
-    // c = c & ~0xE0; // Clear self-test bits [7:5]
-    // Clear AFS bits [4:3]
-    c = c & !0x18;
-    // Set full scale range for the accelerometer
-    c = c | (ASCALE as u8) << 3;
-    // Write new ACCEL_CONFIG register value
-    mpu9250.write(Register::ACCEL_CONFIG, c)?;
-
-    // Set accelerometer sample rate configuration
-    // It is possible to get a 4 kHz sample rate from the accelerometer by choosing 1 for
-    // accel_fchoice_b bit [3]; in this case the bandwidth is 1.13 kHz
-    // get current ACCEL_CONFIG2 register value
-    c = mpu9250.read(Register::ACCEL_CONFIG_2)?;
-    // Clear accel_fchoice_b (bit 3) and A_DLPFG (bits [2:0])
-    c = c & !0x0F;
-    // Set accelerometer rate to 1 kHz and bandwidth to 41 Hz
-    c = c | 0x03;
-    // Write new ACCEL_CONFIG2 register value
-    mpu9250.write(Register::ACCEL_CONFIG_2, c)?;
-
-    // The accelerometer, gyro, and thermometer are set to 1 kHz sample rates,
-    // but all these rates are further reduced by a factor of 5 to 200 Hz because of the SMPLRT_DIV setting
-
-    // Configure Interrupts and Bypass Enable
-    // Set interrupt pin active high, push-pull, hold interrupt pin level HIGH until interrupt cleared,
-    // clear on read of INT_STATUS, and enable I2C_BYPASS_EN so additional chips
-    // can join the I2C bus
-    mpu9250.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
-    mpu9250.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
-    delay.delay_ms(100);
-
-    if TypeId::of::<MODE>() == TypeId::of::<Marg>() {
-        // isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
-        // disable the slave I2C bus, make serial interface SPI only
-        // reset the master I2C bus
-        mpu9250.write(Register::USER_CTRL, 0x32)?;
-
-        // First extract the factory calibration for each magnetometer axis
-        // Power down magnetometer
-        mpu9250.ak8963_write(ak8963::Register::CNTL, 0x00)?;
-        delay.delay_ms(10);
-        // Enter Fuse ROM access mode
-        mpu9250.ak8963_write(ak8963::Register::CNTL, 0x0F)?;
-        delay.delay_ms(10);
-        // Read the x-, y-, and z-axis calibration values
-        let mag_x_bias = mpu9250.ak8963_read(ak8963::Register::ASAX)?;
-        let mag_y_bias = mpu9250.ak8963_read(ak8963::Register::ASAY)?;
-        let mag_z_bias = mpu9250.ak8963_read(ak8963::Register::ASAZ)?;
-        // Return x-axis sensitivity adjustment values, etc.
-        mpu9250.mag_sensitivity_adj = F32x3 {
-            x: ((mag_x_bias - 128) as f32) / 256. + 1.,
-            y: ((mag_y_bias - 128) as f32) / 256. + 1.,
-            z: ((mag_z_bias - 128) as f32) / 256. + 1.,
-        };
-        mpu9250.ak8963_write(ak8963::Register::CNTL, 0x00)?;
-        delay.delay_ms(10);
-        // Set magnetometer data resolution and sample ODR
-        mpu9250.ak8963_write(ak8963::Register::CNTL, (MSCALE as u8) << 4 | MMODE)?;
-        delay.delay_ms(10);
-
-        // set aux I2C frequency to 400 KHz
-        mpu9250.write(Register::I2C_MST_CTRL, 0x0d)?;
-
-        // // sanity check that the aux I2C is working
-        // debug_assert_eq!(mpu9250.ak8963_read(ak8963::Register::WIA)?, 0x48);
-
-        // // software reset the magnetometer
-        // // FIXME this hangs when compiled in release mode
-        // mpu9250.ak8963_write(ak8963::Register::CNTL_2, 0x01)?;
-
-        delay.delay_ms(10);
-
-        // configure sampling of magnetometer
-        mpu9250.write(Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
-        mpu9250.write(Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
-        mpu9250.write(Register::I2C_SLV0_CTRL, 0x87)?;
-
-        delay.delay_ms(10);
-    }
-
-    Ok(mpu9250)
-}
-
-impl<SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE> {
-    /// Returns accel resolution
-    pub fn accel_resolution(&self) -> f32 {
-        self.accel_resolution
-    }
-
-    /// Returns gyro resolution
-    pub fn gyro_resolution(&self) -> f32 {
-        self.gyro_resolution
-    }
-
-    /// Returns mag resolution
-    pub fn mag_resolution(&self) -> f32 {
-        self.mag_resolution
-    }
-}
+const G: f32 = 9.807;
+const PI_180: f32 = core::f32::consts::PI / 180.;
+const TEMP_SENSITIVITY: f32 = 333.87;
+const TEMP_DIFF: f32 = 21.0;
+const TEMP_ROOM_OFFSET: f32 = 0.0;
 
 impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
-where
-    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-    NCS: OutputPin,
+    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+          NCS: OutputPin
 {
-    /// Creates a new IMU driver from a SPI peripheral and a NCS pin
+    /// Creates a new [`Imu`] driver from a SPI peripheral and a NCS pin with
+    /// default [`Accel scale`], [`Gyro scale`], [`DLPF`], and
+    /// with no sample rate divisor.
     ///
-    /// # Defaults
-    ///
-    /// - Accelerometer: 16 bits, range [-2g, +2g]
-    /// - Gyroscope: 16 bits, range [-250 dps, +250 dps]
-    pub fn imu<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
-    where
-        D: DelayMs<u8>,
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    /// [`DLPF`]: ./enum.Dlpf.html
+    pub fn imu_default<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
+        where D: DelayMs<u8>
     {
-        new(spi, ncs, delay)
+        Mpu9250::imu(spi, ncs, delay, None, None, None, None)
     }
 
-    /// Accelerometer + Gyroscope + Temperature sensor measurements
-    pub fn all(&mut self) -> Result<ImuMeasurements, E> {
+    /// Creates a new Imu driver from a SPI peripheral and a NCS pin with
+    /// optionally configured [`Accel scale`], [`Gyro scale`],
+    /// [`DLPF`], and sample rate divisor.
+    ///
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    /// [`DLPF`]: ./enum.Dlpf.html
+    pub fn imu<D>(spi: SPI,
+                  ncs: NCS,
+                  delay: &mut D,
+                  gyro_scale: Option<GyroScale>,
+                  accel_scale: Option<AccelScale>,
+                  digital_low_pass_filter_mode: Option<Dlpf>,
+                  sample_rate_divisor: Option<u8>)
+                  -> Result<Self, E>
+        where D: DelayMs<u8>
+    {
+        let mut mpu9250 =
+            Mpu9250 { spi,
+                      ncs,
+                      gyro_scale: gyro_scale.unwrap_or_default(),
+                      accel_scale: accel_scale.unwrap_or_default(),
+                      mag_scale: MagScale::default(),
+                      raw_mag_sensitivity_adjustments: [0, 0, 0],
+                      mag_sensitivity_adjustments: F32x3::default(),
+                      _mode: PhantomData, };
+        mpu9250.init_mpu(digital_low_pass_filter_mode,
+                         sample_rate_divisor,
+                         delay)?;
+        Ok(mpu9250)
+    }
+
+    fn init_mpu<D>(&mut self,
+                   dlpf: Option<Dlpf>,
+                   smplrt_div: Option<u8>,
+                   delay: &mut D)
+                   -> Result<(), E>
+        where D: DelayMs<u8>
+    {
+        // wake up device
+        self.write(Register::PWR_MGMT_1, 0x00)?; // Clear sleep mode bit (6), enable all sensors
+        delay.delay_ms(100); // Wait for all registers to reset
+
+        // get stable time source
+        // Auto select clock source to be PLL gyroscope reference if ready else
+        self.write(Register::PWR_MGMT_1, 0x01)?;
+        delay.delay_ms(200);
+
+        // Set gyroscope full scale range
+        let gscale = self.gyro_scale;
+        self.gyro_scale(gscale)?;
+        // Disable FSYNC and set thermometer and gyro bandwidth
+        let dlpf = dlpf.unwrap_or_default();
+        self.gyro_filter(dlpf.clone())?;
+
+        // Set accelerometer full-scale range configuration
+        let ascale = self.accel_scale;
+        self.accel_scale(ascale)?;
+        // Set accelerometer sample rate configuration
+        self.accel_filter(dlpf)?;
+
+        // Set smplrt_div if present
+        if let Some(sample_rate_div) = smplrt_div {
+            self.sample_rate_divisor(sample_rate_div)?;
+        }
+
+        // Configure Interrupts and Bypass Enable
+        // Set interrupt pin active high, push-pull, hold interrupt pin level
+        // HIGH until interrupt cleared, clear on read of INT_STATUS,
+        // and enable I2C_BYPASS_EN so
+        // additional chips can join the I2C bus
+        self.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
+        self.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
+        delay.delay_ms(100);
+        // TODO: check .who_am_i and return Err
+
+        Ok(())
+    }
+
+    /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
+    /// measurements (LSB).
+    pub fn unscaled_all(&mut self) -> Result<UnscaledImuMeasurements, E> {
         let buffer = self.read_many::<U15>(Register::ACCEL_XOUT_H)?;
 
-        let accel = I16x3 {
-            x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-            y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-            z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16,
-        };
+        let accel =
+            I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
+                    y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
+                    z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, };
 
         let temp = (u16(buffer[7]) << 8) + u16(buffer[8]);
 
-        let gyro = I16x3 {
-            x: ((u16(buffer[9]) << 8) + u16(buffer[10])) as i16,
-            y: ((u16(buffer[11]) << 8) + u16(buffer[12])) as i16,
-            z: ((u16(buffer[13]) << 8) + u16(buffer[14])) as i16,
-        };
+        let gyro =
+            I16x3 { x: ((u16(buffer[9]) << 8) + u16(buffer[10])) as i16,
+                    y: ((u16(buffer[11]) << 8) + u16(buffer[12])) as i16,
+                    z: ((u16(buffer[13]) << 8) + u16(buffer[14])) as i16, };
 
-        Ok(ImuMeasurements { accel, gyro, temp })
+        Ok(UnscaledImuMeasurements { accel,
+                                     gyro,
+                                     temp, })
+    }
+
+    /// Reads and returns Accelerometer + Gyroscope + Thermometer
+    /// measurements scaled and converted to respective units.
+    pub fn all(&mut self) -> Result<ImuMeasurements, E> {
+        let buffer = self.read_many::<U15>(Register::ACCEL_XOUT_H)?;
+
+        let accel = self.scale_accel(buffer, 0);
+        let temp = self.scale_temp(buffer, 6);
+        let gyro = self.scale_gyro(buffer, 8);
+
+        Ok(ImuMeasurements { accel,
+                             gyro,
+                             temp, })
     }
 }
 
 impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
-where
-    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-    NCS: OutputPin,
+    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+          NCS: OutputPin
 {
-    /// Creates a new MARG driver from a SPI peripheral and a NCS pin
+    /// Creates a new [`Marg`] driver from a SPI peripheral and a NCS pin with
+    /// default [`Accel scale`], [`Gyro scale`], [`Mag scale`], [`DLPF`], and
+    /// with no sample rate divisor.
     ///
-    /// # Defaults
-    ///
-    /// - Accelerometer: 16 bits, range [-2g, +2g]
-    /// - Gyroscope: 16 bits, range [-250 dps, +250 dps]
-    pub fn marg<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
-    where
-        D: DelayMs<u8>,
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    /// [`Mag scale`]: ./enum.MagScale.html
+    /// [`DLPF`]: ./enum.Dlpf.html
+    pub fn marg_default<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
+        where D: DelayMs<u8>
     {
-        new(spi, ncs, delay)
+        Mpu9250::marg(spi, ncs, delay, None, None, None, None, None)
     }
 
-    /// Returns factory mag sensitivity biases
-    pub fn mag_sensitivity_adj(&self) -> F32x3 {
-        self.mag_sensitivity_adj
+    /// Creates a new MARG driver from a SPI peripheral and a NCS pin with
+    /// optionally configured [`Accel scale`], [`Gyro scale`],
+    /// [`Mag scale`], [`DLPF`], and sample rate divisor.
+    ///
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    /// [`Mag scale`]: ./enum.MagScale.html
+    /// [`DLPF`]: ./enum.Dlpf.html
+    pub fn marg<D>(spi: SPI,
+                   ncs: NCS,
+                   delay: &mut D,
+                   gyro_scale: Option<GyroScale>,
+                   accel_scale: Option<AccelScale>,
+                   mag_scale: Option<MagScale>,
+                   dlpf: Option<Dlpf>,
+                   smplrt_div: Option<u8>)
+                   -> Result<Self, E>
+        where D: DelayMs<u8>
+    {
+        let mpu9250_in = Mpu9250::imu(spi,
+                                      ncs,
+                                      delay,
+                                      gyro_scale,
+                                      accel_scale,
+                                      dlpf,
+                                      smplrt_div)?;
+        let mut mpu9250: Mpu9250<SPI, NCS, Marg> =
+            Mpu9250 { spi: mpu9250_in.spi,
+                      ncs: mpu9250_in.ncs,
+                      gyro_scale: mpu9250_in.gyro_scale,
+                      accel_scale: mpu9250_in.accel_scale,
+                      mag_scale: mag_scale.unwrap_or_default(),
+                      raw_mag_sensitivity_adjustments: [0, 0, 0],
+                      mag_sensitivity_adjustments: F32x3::default(),
+                      _mode: PhantomData, };
+        mpu9250.init_ak8963(mag_scale, delay)?;
+        Ok(mpu9250)
+    }
+
+    fn init_ak8963<D>(&mut self,
+                      mag_scale: Option<MagScale>,
+                      delay: &mut D)
+                      -> Result<(), E>
+        where D: DelayMs<u8>
+    {
+        // isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
+        // disable the slave I2C bus, make serial interface SPI only
+        // reset the master I2C bus
+        self.write(Register::USER_CTRL, 0x32)?;
+
+        // First extract the factory calibration for each magnetometer axis
+        // Power down magnetometer
+        self.ak8963_write(ak8963::Register::CNTL, 0x00)?;
+        delay.delay_ms(10);
+        // Enter Fuse ROM access mode
+        self.ak8963_write(ak8963::Register::CNTL, 0x0F)?;
+        delay.delay_ms(10);
+        // Read the x-, y-, and z-axis calibration values
+        let mag_x_bias = self.ak8963_read(ak8963::Register::ASAX)?;
+        let mag_y_bias = self.ak8963_read(ak8963::Register::ASAY)?;
+        let mag_z_bias = self.ak8963_read(ak8963::Register::ASAZ)?;
+        // Return x-axis sensitivity adjustment values, etc.
+        self.raw_mag_sensitivity_adjustments =
+            [mag_x_bias, mag_y_bias, mag_z_bias];
+        self.mag_sensitivity_adjustments =
+            F32x3 { x: ((self.raw_mag_sensitivity_adjustments[0] - 128)
+                        as f32)
+                       / 256.
+                       + 1.,
+                    y: ((self.raw_mag_sensitivity_adjustments[1] - 128)
+                        as f32)
+                       / 256.
+                       + 1.,
+                    z: ((self.raw_mag_sensitivity_adjustments[2] - 128)
+                        as f32)
+                       / 256.
+                       + 1., };
+        self.ak8963_write(ak8963::Register::CNTL, 0x00)?;
+        delay.delay_ms(10);
+        // Set magnetometer data resolution and sample ODR
+        self.mag_scale(mag_scale.unwrap_or_default())?;
+        delay.delay_ms(10);
+
+        // set aux I2C frequency to 400 KHz (should be configurable?)
+        self.write(Register::I2C_MST_CTRL, 0x0d)?;
+
+        // XXX: check who_am_i and return error
+        // debug_assert_eq!(self.ak8963_read(ak8963::Register::WHO_AM_I)?,
+        // 0x48); // FIXME this hangs when compiled in release mode
+        // self.ak8963_write(ak8963::Register::CNTL_2, 0x01)?;
+
+        delay.delay_ms(10);
+
+        // configure sampling of magnetometer
+        self.write(Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
+        self.write(Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
+        self.write(Register::I2C_SLV0_CTRL, 0x87)?;
+
+        delay.delay_ms(10);
+        Ok(())
+    }
+
+    /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
+    /// + Magnetometer measurements (LSB).
+    pub fn all_unscaled(&mut self) -> Result<UnscaledMargMeasurements, E> {
+        let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
+
+        let accel =
+            I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
+                    y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
+                    z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, };
+
+        let temp = (u16(buffer[7]) << 8) + u16(buffer[8]);
+
+        let gyro =
+            I16x3 { x: ((u16(buffer[9]) << 8) + u16(buffer[10])) as i16,
+                    y: ((u16(buffer[11]) << 8) + u16(buffer[12])) as i16,
+                    z: ((u16(buffer[13]) << 8) + u16(buffer[14])) as i16, };
+
+        let mag =
+            I16x3 { x: ((u16(buffer[16]) << 8) + u16(buffer[15])) as i16,
+                    y: ((u16(buffer[18]) << 8) + u16(buffer[17])) as i16,
+                    z: ((u16(buffer[20]) << 8) + u16(buffer[19])) as i16, };
+
+        Ok(UnscaledMargMeasurements { accel,
+                                      gyro,
+                                      temp,
+                                      mag, })
+    }
+
+    /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
+    /// measurements scaled and converted to respective units.
+    pub fn all(&mut self) -> Result<MargMeasurements, E> {
+        let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
+
+        let accel = self.scale_accel(buffer, 0);
+        let temp = self.scale_temp(buffer, 6);
+        let gyro = self.scale_gyro(buffer, 8);
+        let mag = self.scale_and_correct_mag(buffer, 14);
+
+        Ok(MargMeasurements { accel,
+                              gyro,
+                              temp,
+                              mag, })
+    }
+
+    fn scale_and_correct_mag<N>(&self,
+                                buffer: GenericArray<u8, N>,
+                                offset: usize)
+                                -> F32x3
+        where N: ArrayLength<u8>
+    {
+        let resolution = self.mag_scale.resolution();
+        let scaled = self.scale_x3_measurement(buffer, offset, resolution);
+        scaled * self.mag_sensitivity_adjustments
+    }
+
+    /// Reads and returns raw unscaled Magnetometer measurements (LSB).
+    pub fn unscaled_mag(&mut self) -> Result<I16x3, E> {
+        let buffer = self.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
+
+        Ok(I16x3 { x: ((u16(buffer[2]) << 8) + u16(buffer[1])) as i16,
+                   y: ((u16(buffer[4]) << 8) + u16(buffer[3])) as i16,
+                   z: ((u16(buffer[6]) << 8) + u16(buffer[5])) as i16, })
+    }
+
+    /// Read and returns Magnetometer measurements scaled, adjusted for factory
+    /// sensitivities, and converted to Teslas.
+    pub fn mag(&mut self) -> Result<F32x3, E> {
+        let buffer = self.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
+        Ok(self.scale_and_correct_mag(buffer, 0))
+    }
+
+    /// Returns raw mag sensitivity adjustments
+    pub fn raw_mag_sensitivity_adjustments(&self) -> [u8; 3] {
+        self.raw_mag_sensitivity_adjustments
+    }
+
+    /// Returns mag sensitivity adjustments
+    pub fn mag_sensitivity_adjustments(&self) -> F32x3 {
+        self.mag_sensitivity_adjustments
+    }
+
+    /// Sets magnetrometer full reading scale ([`MagScale`])
+    ///
+    /// [`Mag scale`]: ./enum.MagScale.html
+    pub fn mag_scale(&mut self, scale: MagScale) -> Result<(), E> {
+        // Set magnetometer data resolution and sample ODR
+        self.ak8963_write(ak8963::Register::CNTL, (scale as u8) << 4 | MMODE)?;
+        Ok(())
     }
 
     /// Reads the AK8963 (magnetometer) WHO_AM_I register; should return `0x48`
     pub fn ak8963_who_am_i(&mut self) -> Result<u8, E> {
         self.ak8963_read(ak8963::Register::WHO_AM_I)
     }
-
-    /// Accelerometer + Gyroscope + Temperature sensor measurements
-    pub fn all(&mut self) -> Result<MargMeasurements, E> {
-        let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
-
-        let accel = I16x3 {
-            x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-            y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-            z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16,
-        };
-
-        let temp = (u16(buffer[7]) << 8) + u16(buffer[8]);
-
-        let gyro = I16x3 {
-            x: ((u16(buffer[9]) << 8) + u16(buffer[10])) as i16,
-            y: ((u16(buffer[11]) << 8) + u16(buffer[12])) as i16,
-            z: ((u16(buffer[13]) << 8) + u16(buffer[14])) as i16,
-        };
-
-        let mag = I16x3 {
-            x: ((u16(buffer[16]) << 8) + u16(buffer[15])) as i16,
-            y: ((u16(buffer[18]) << 8) + u16(buffer[17])) as i16,
-            z: ((u16(buffer[20]) << 8) + u16(buffer[19])) as i16,
-        };
-
-        Ok(MargMeasurements {
-            accel,
-            gyro,
-            temp,
-            mag,
-        })
-    }
-
-    /// Magnetometer measurements
-    pub fn mag(&mut self) -> Result<I16x3, E> {
-        let buffer = self.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
-
-        Ok(I16x3 {
-            x: ((u16(buffer[2]) << 8) + u16(buffer[1])) as i16,
-            y: ((u16(buffer[4]) << 8) + u16(buffer[3])) as i16,
-            z: ((u16(buffer[6]) << 8) + u16(buffer[5])) as i16,
-        })
-    }
 }
 
 impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
-where
-    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-    NCS: OutputPin,
+    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+          NCS: OutputPin
 {
-    /// Accelerometer measurements
-    pub fn accel(&mut self) -> Result<I16x3, E> {
-        let buffer = self.read_many::<U7>(Register::ACCEL_XOUT_H)?;
-
-        Ok(I16x3 {
-            x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-            y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-            z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16,
-        })
+    fn scale_x3_measurement<N>(&self,
+                               buffer: GenericArray<u8, N>,
+                               offset: usize,
+                               scale: f32)
+                               -> F32x3
+        where N: ArrayLength<u8>
+    {
+        let x = (u16(buffer[offset + 1]) << 8) + u16(buffer[offset + 2]);
+        let y = (u16(buffer[offset + 3]) << 8) + u16(buffer[offset + 4]);
+        let z = (u16(buffer[offset + 5]) << 8) + u16(buffer[offset + 6]);
+        F32x3 { x: f32(x) * scale,
+                y: f32(y) * scale,
+                z: f32(z) * scale, }
     }
 
-    /// Applies a digital low pass filter to the accelerometer data
-    pub fn a_filter(&mut self, dlpf: Dlpf) -> Result<(), E> {
+    fn scale_accel<N>(&self,
+                      buffer: GenericArray<u8, N>,
+                      offset: usize)
+                      -> F32x3
+        where N: ArrayLength<u8>
+    {
+        let resolution = self.accel_scale.resolution();
+        let scale = G * resolution;
+        self.scale_x3_measurement(buffer, offset, scale)
+    }
+
+    fn scale_gyro<N>(&self, buffer: GenericArray<u8, N>, offset: usize) -> F32x3
+        where N: ArrayLength<u8>
+    {
+        let resolution = self.gyro_scale.resolution();
+        let scale = PI_180 * resolution;
+        self.scale_x3_measurement(buffer, offset, scale)
+    }
+
+    fn scale_temp<N>(&self, buffer: GenericArray<u8, N>, offset: usize) -> f32
+        where N: ArrayLength<u8>
+    {
+        let t = f32((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]));
+        (t - TEMP_ROOM_OFFSET) / TEMP_SENSITIVITY + TEMP_DIFF
+    }
+
+    /// Reads and returns unscaled accelerometer measurements (LSB).
+    pub fn unscaled_accel(&mut self) -> Result<I16x3, E> {
+        let buffer = self.read_many::<U7>(Register::ACCEL_XOUT_H)?;
+
+        Ok(I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
+                   y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
+                   z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, })
+    }
+
+    /// Reads and returns accelerometer measurements scaled and converted to g.
+    pub fn accel(&mut self) -> Result<F32x3, E> {
+        let buffer = self.read_many::<U7>(Register::ACCEL_XOUT_H)?;
+        Ok(self.scale_accel(buffer, 0))
+    }
+
+    /// Applies a digital low pass filter to the accelerometer data ([`Dlpf`]).
+    ///
+    /// [`DLPF`]: ./enum.Dlpf.html
+    pub fn accel_filter(&mut self, dlpf: Dlpf) -> Result<(), E> {
         self.write(Register::ACCEL_CONFIG_2, dlpf as u8)?;
 
         Ok(())
     }
 
-    /// Set accelerometer reading scale
-    pub fn a_scale(&mut self, scale: FSScale) -> Result<(), E> {
+    /// Sets accelerometer full reading scale ([`Accel scale`]).
+    ///
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    pub fn accel_scale(&mut self, scale: AccelScale) -> Result<(), E> {
         self.modify(Register::ACCEL_CONFIG, |r| {
-            (r & !0b11000) | ((scale as u8) << 3)
-        })?;
+                (r & !0b11000) | ((scale as u8) << 3)
+            })?;
         Ok(())
     }
 
-    /// Accelerometer YZ measurements
-    pub fn aryz(&mut self) -> Result<(i16, i16), E> {
-        let buffer = self.read_many::<U5>(Register::ACCEL_YOUT_H)?;
+    /// Reads and returns unsacled Gyroscope measurements (LSB).
+    pub fn unscaled_gyro(&mut self) -> Result<I16x3, E> {
+        let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
 
-        let y = ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16;
-        let z = ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16;
-
-        Ok((y, z))
+        Ok(I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
+                   y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
+                   z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, })
     }
 
-    /// Accelerometer YZ + temperature sensor + gyroscope X measurements
-    pub fn aryz_t_gx(&mut self) -> Result<(i16, i16, i16, i16), E> {
-        let buffer = self.read_many::<U9>(Register::ACCEL_YOUT_H)?;
-
-        let y = ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16;
-        let z = ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16;
-        let t = ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16;
-        let x = ((u16(buffer[7]) << 8) + u16(buffer[8])) as i16;
-
-        Ok((y, z, t, x))
+    /// Reads and returns gyroscope measurements scaled and converted to rad/s.
+    pub fn gyro(&mut self) -> Result<F32x3, E> {
+        let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
+        Ok(self.scale_gyro(buffer, 0))
     }
 
-    /// Applies a digital low pass filter to the gyroscope data
-    pub fn g_filter(&mut self, dlpf: Dlpf) -> Result<(), E> {
+    /// Applies a digital low pass filter to the gyroscope data ([`Dlpf`]).
+    ///
+    /// [`DLPF`]: ./enum.Dlpf.html
+    pub fn gyro_filter(&mut self, dlpf: Dlpf) -> Result<(), E> {
         self.modify(Register::CONFIG, |r| (r & !0b11) | dlpf as u8)?;
 
         Ok(())
     }
 
-    /// Set gyroscope reading scale
-    pub fn g_scale(&mut self, scale: FSScale) -> Result<(), E> {
+    /// Sets gyroscope full reading scale ([`Gyro scale`]).
+    ///
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    pub fn gyro_scale(&mut self, scale: GyroScale) -> Result<(), E> {
+        self.gyro_scale = scale;
         self.modify(Register::GYRO_CONFIG, |r| {
-            (r & !0b11000) | ((scale as u8) << 3)
-        })?;
+                (r & !0b11000) | ((scale as u8) << 3)
+            })?;
 
         Ok(())
     }
 
-    /// Gyroscope measurements
-    pub fn gyro(&mut self) -> Result<I16x3, E> {
-        let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
-
-        Ok(I16x3 {
-            x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-            y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-            z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16,
-        })
-    }
-
-    /// Gyroscope X measurement
-    pub fn gx(&mut self) -> Result<i16, E> {
-        let buffer = self.read_many::<U3>(Register::GYRO_XOUT_H)?;
-
-        Ok(((u16(buffer[1]) << 8) + u16(buffer[2])) as i16)
-    }
-
-    /// Temperature sensor measurements
-    pub fn temp(&mut self) -> Result<i16, E> {
+    /// Reads and returns raw unscaled temperature sensor measurements (LSB).
+    pub fn raw_temp(&mut self) -> Result<i16, E> {
         let buffer = self.read_many::<U3>(Register::TEMP_OUT_H)?;
+        let t = (u16(buffer[1]) << 8) | u16(buffer[2]);
+        Ok(t as i16)
+    }
 
-        Ok((u16(buffer[1]) << 8 + u16(buffer[2])) as i16)
+    /// Reads and returns adjusted temperature measurements converted to C.
+    pub fn temp(&mut self) -> Result<f32, E> {
+        let buffer = self.read_many::<U3>(Register::TEMP_OUT_H)?;
+        Ok(self.scale_temp(buffer, 0))
+    }
+
+    /// Clears Fchoice bits and sets rate divisor (SMPLRT_DIV).
+    pub fn sample_rate_divisor(&mut self, smplrt_div: u8) -> Result<(), E> {
+        // Configure Gyro and Thermometer
+        self.modify(Register::GYRO_CONFIG, |v| {
+                // c = c & ~0xE0; // Clear self-test bits [7:5]
+                // Clear Fchoice bits [1:0], to be able to set SMPLRT_DIV
+                v & !0x03
+            })?;
+        self.write(Register::SMPLRT_DIV, smplrt_div)?;
+        Ok(())
     }
 
     /// Destroys the driver recovering the SPI peripheral and the NCS pin
@@ -522,7 +610,10 @@ where
         self.read(Register::I2C_SLV4_DI)
     }
 
-    fn ak8963_write(&mut self, reg: ak8963::Register, val: u8) -> Result<(), E> {
+    fn ak8963_write(&mut self,
+                    reg: ak8963::Register,
+                    val: u8)
+                    -> Result<(), E> {
         self.write(Register::I2C_SLV4_ADDR, ak8963::I2C_ADDRESS | ak8963::W)?;
         self.write(Register::I2C_SLV4_REG, reg.addr())?;
         self.write(Register::I2C_SLV4_DO, val)?;
@@ -537,8 +628,7 @@ where
     }
 
     fn modify<F>(&mut self, reg: Register, f: F) -> Result<(), E>
-    where
-        F: FnOnce(u8) -> u8,
+        where F: FnOnce(u8) -> u8
     {
         let r = self.read(reg)?;
         self.write(reg, f(r))?;
@@ -551,8 +641,7 @@ where
     }
 
     fn read_many<N>(&mut self, reg: Register) -> Result<GenericArray<u8, N>, E>
-    where
-        N: ArrayLength<u8>,
+        where N: ArrayLength<u8>
     {
         let mut buffer: GenericArray<u8, N> = unsafe { mem::zeroed() };
         {
@@ -574,11 +663,26 @@ where
     }
 }
 
+impl<SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE> {
+    /// Returns Accelerometer resolution.
+    pub fn accel_resolution(&self) -> f32 {
+        self.accel_scale.resolution()
+    }
+
+    /// Returns Gyroscope resolution.
+    pub fn gyro_resolution(&self) -> f32 {
+        self.gyro_scale.resolution()
+    }
+
+    /// Returns Magnetometer resolution.
+    pub fn mag_resolution(&self) -> f32 {
+        self.mag_scale.resolution()
+    }
+}
+
 /// SPI mode
-pub const MODE: Mode = Mode {
-    polarity: Polarity::IdleHigh,
-    phase: Phase::CaptureOnSecondTransition,
-};
+pub const MODE: Mode = Mode { polarity: Polarity::IdleHigh,
+                              phase: Phase::CaptureOnSecondTransition, };
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
@@ -630,8 +734,8 @@ impl Register {
     }
 }
 
-/// XYZ triple
-#[derive(Debug)]
+/// XYZ triple of i16
+#[derive(Clone, Copy, Debug)]
 pub struct I16x3 {
     /// X component
     pub x: i16,
@@ -652,31 +756,76 @@ pub struct F32x3 {
     pub z: f32,
 }
 
-/// IMU measurements
-#[derive(Debug)]
+impl Mul for F32x3 {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self {
+        F32x3 { x: self.x * rhs.x,
+                y: self.y * rhs.y,
+                z: self.z * rhs.z, }
+    }
+}
+
+impl Default for F32x3 {
+    fn default() -> Self {
+        F32x3 { x: 0.,
+                y: 0.,
+                z: 0., }
+    }
+}
+
+/// Unscaled IMU measurements (LSB)
+#[derive(Clone, Copy, Debug)]
+pub struct UnscaledImuMeasurements {
+    /// Accelerometer measurements (LSB)
+    pub accel: I16x3,
+    /// Gyroscope measurements (LSB)
+    pub gyro: I16x3,
+    /// Temperature sensor measurement (LSB)
+    pub temp: u16,
+}
+
+/// Scaled IMU measurements converted to units
+#[derive(Clone, Copy, Debug)]
 pub struct ImuMeasurements {
-    /// Accelerometer measurements
-    pub accel: I16x3,
-    /// Gyroscope measurements
-    pub gyro: I16x3,
-    /// Temperature sensor measurement
-    pub temp: u16,
+    /// Accelerometer measurements (g)
+    pub accel: F32x3,
+    /// Gyroscope measurements (rad/s)
+    pub gyro: F32x3,
+    /// Temperature sensor measurement (C)
+    pub temp: f32,
 }
 
-/// MARG measurements
-#[derive(Debug)]
-pub struct MargMeasurements {
-    /// Accelerometer measurements
+/// Unscaled MARG measurements (LSB)
+#[derive(Copy, Clone, Debug)]
+pub struct UnscaledMargMeasurements {
+    /// Accelerometer measurements (LSB)
     pub accel: I16x3,
-    /// Gyroscope measurements
+    /// Gyroscope measurements (LSB)
     pub gyro: I16x3,
-    /// Magnetometer measurements
+    /// Magnetometer measurements (LSB)
     pub mag: I16x3,
-    /// Temperature sensor measurement
+    /// Temperature sensor measurement (LSB)
     pub temp: u16,
 }
 
-/// Digital low pass filter configuration
+/// MARG measurements scaled with respective scales and converted
+/// to appropriate units.
+#[derive(Copy, Clone, Debug)]
+pub struct MargMeasurements {
+    /// Accelerometer measurements (g)
+    pub accel: F32x3,
+    /// Gyroscope measurements (rad/s)
+    pub gyro: F32x3,
+    /// Magnetometer measurements (T, teslas)
+    pub mag: F32x3,
+    /// Temperature sensor measurement (C)
+    pub temp: f32,
+}
+
+/// Digital low pass filter configuration; default:
+/// Accelerometer = 41 Hz, Gyroscope: 41 Hz, Temperature sensor = 42 Hz.
+#[derive(Copy, Clone, Debug)]
 pub enum Dlpf {
     /// Accelerometer = 460 Hz, Gyroscope: 250 Hz, Temperature sensor = 4000 Hz
     _0 = 0,
@@ -692,18 +841,99 @@ pub enum Dlpf {
     _5 = 5,
     /// Accelerometer = 5 Hz, Gyroscope: 5 Hz, Temperature sensor = 5 Hz
     _6 = 6,
-    /// Accelerometer = 460 Hz, Gyroscope: 3600 Hz, Temperature sensor = 4000 Hz
+    /// Accelerometer = 460 Hz, Gyroscope: 3600 Hz, Temperature sensor = 4000
+    /// Hz
     _7 = 7,
 }
+impl Default for Dlpf {
+    fn default() -> Self {
+        Dlpf::_3
+    }
+}
 
-/// Sensor reading full scale configuration
-pub enum FSScale {
-    /// Accelerometer = +2g, Gyroscope: +250 dps
-    _00 = 0b00,
-    /// Accelerometer = +4g, Gyroscope: +500 dps
-    _01 = 0b01,
-    /// Accelerometer = +8g, Gyroscope: +1000 dps
-    _02 = 0b10,
-    /// Accelerometer = +16g, Gyroscope: +2000 dps
-    _03 = 0b11,
+/// Sensor reading scale
+pub trait FullScale {
+    /// Returns scale resolutino
+    fn resolution(&self) -> f32;
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
+/// Gyroscope reading full scale configuration; default: +250 dps.
+pub enum GyroScale {
+    /// +250 dps
+    GFS_250DPS = 0,
+    /// +500 dps
+    GFS_500DPS,
+    /// +1000 dps
+    GFS_1000DPS,
+    /// +2000 dps
+    GFS_2000DPS,
+}
+impl FullScale for GyroScale {
+    fn resolution(&self) -> f32 {
+        match self {
+            GyroScale::GFS_250DPS => 250.0 / 32768.0,
+            GyroScale::GFS_500DPS => 500.0 / 32768.0,
+            GyroScale::GFS_1000DPS => 1000.0 / 32768.0,
+            GyroScale::GFS_2000DPS => 2000.0 / 32768.0,
+        }
+    }
+}
+impl Default for GyroScale {
+    fn default() -> Self {
+        GyroScale::GFS_250DPS
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
+/// Accelerometer reading full scale configuration, default: +2g.
+pub enum AccelScale {
+    /// +2g
+    AFS_2G = 0,
+    /// +4g
+    AFS_4G,
+    /// +8g
+    AFS_8G,
+    /// +16g
+    AFS_16G,
+}
+impl FullScale for AccelScale {
+    fn resolution(&self) -> f32 {
+        match self {
+            AccelScale::AFS_2G => 2.0 / 32768.0,
+            AccelScale::AFS_4G => 4.0 / 32768.0,
+            AccelScale::AFS_8G => 8.0 / 32768.0,
+            AccelScale::AFS_16G => 16.0 / 32768.0,
+        }
+    }
+}
+impl Default for AccelScale {
+    fn default() -> Self {
+        AccelScale::AFS_2G
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
+/// Gyroscope reading full scale configuration; default: 0.6 mG per LSB
+pub enum MagScale {
+    /// 0.6 mG per LSB
+    MFS_14BITS = 0,
+    /// 0.15 mG per LSB
+    MFS_16BITS,
+}
+impl FullScale for MagScale {
+    fn resolution(&self) -> f32 {
+        match self {
+            MagScale::MFS_14BITS => 10. * 4912. / 8190.,
+            MagScale::MFS_16BITS => 10. * 4912. / 32760.0,
+        }
+    }
+}
+impl Default for MagScale {
+    fn default() -> Self {
+        MagScale::MFS_14BITS
+    }
 }
