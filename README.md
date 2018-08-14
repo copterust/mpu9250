@@ -37,6 +37,10 @@ println!("{:?}", all);
 Number of examples can be found in [proving-ground](https://github.com/copterust/proving-ground) repo.
 Examples include: reading temperature, calibrating magnetrometer, reading all sensors.
 
+## Documentation
+
+API Docs available on [docs.rs](https://docs.rs/mpu9250).
+
 ## License
 
 Licensed under either of
