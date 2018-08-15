@@ -200,16 +200,16 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
         let buffer = self.read_many::<U15>(Register::ACCEL_XOUT_H)?;
 
         let accel =
-            I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-                    y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-                    z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, };
+            I16x3 { x: ((u16(buffer[1]) << 8) | u16(buffer[2])) as i16,
+                    y: ((u16(buffer[3]) << 8) | u16(buffer[4])) as i16,
+                    z: ((u16(buffer[5]) << 8) | u16(buffer[6])) as i16, };
 
-        let temp = (u16(buffer[7]) << 8) + u16(buffer[8]);
+        let temp = (u16(buffer[7]) << 8) | u16(buffer[8]);
 
         let gyro =
-            I16x3 { x: ((u16(buffer[9]) << 8) + u16(buffer[10])) as i16,
-                    y: ((u16(buffer[11]) << 8) + u16(buffer[12])) as i16,
-                    z: ((u16(buffer[13]) << 8) + u16(buffer[14])) as i16, };
+            I16x3 { x: ((u16(buffer[9]) << 8) | u16(buffer[10])) as i16,
+                    y: ((u16(buffer[11]) << 8) | u16(buffer[12])) as i16,
+                    z: ((u16(buffer[13]) << 8) | u16(buffer[14])) as i16, };
 
         Ok(UnscaledImuMeasurements { accel,
                                      gyro,
@@ -353,25 +353,25 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
 
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// + Magnetometer measurements (LSB).
-    pub fn all_unscaled(&mut self) -> Result<UnscaledMargMeasurements, E> {
+    pub fn unscaled_all(&mut self) -> Result<UnscaledMargMeasurements, E> {
         let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
 
         let accel =
-            I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-                    y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-                    z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, };
+            I16x3 { x: ((u16(buffer[1]) << 8) | u16(buffer[2])) as i16,
+                    y: ((u16(buffer[3]) << 8) | u16(buffer[4])) as i16,
+                    z: ((u16(buffer[5]) << 8) | u16(buffer[6])) as i16, };
 
-        let temp = (u16(buffer[7]) << 8) + u16(buffer[8]);
+        let temp = (u16(buffer[7]) << 8) | u16(buffer[8]);
 
         let gyro =
-            I16x3 { x: ((u16(buffer[9]) << 8) + u16(buffer[10])) as i16,
-                    y: ((u16(buffer[11]) << 8) + u16(buffer[12])) as i16,
-                    z: ((u16(buffer[13]) << 8) + u16(buffer[14])) as i16, };
+            I16x3 { x: ((u16(buffer[9]) << 8) | u16(buffer[10])) as i16,
+                    y: ((u16(buffer[11]) << 8) | u16(buffer[12])) as i16,
+                    z: ((u16(buffer[13]) << 8) | u16(buffer[14])) as i16, };
 
         let mag =
-            I16x3 { x: ((u16(buffer[16]) << 8) + u16(buffer[15])) as i16,
-                    y: ((u16(buffer[18]) << 8) + u16(buffer[17])) as i16,
-                    z: ((u16(buffer[20]) << 8) + u16(buffer[19])) as i16, };
+            I16x3 { x: ((u16(buffer[16]) << 8) | u16(buffer[15])) as i16,
+                    y: ((u16(buffer[18]) << 8) | u16(buffer[17])) as i16,
+                    z: ((u16(buffer[20]) << 8) | u16(buffer[19])) as i16, };
 
         Ok(UnscaledMargMeasurements { accel,
                                       gyro,
