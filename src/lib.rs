@@ -458,9 +458,14 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
                                -> F32x3
         where N: ArrayLength<u8>
     {
-        let x = (u16(buffer[offset + 1]) << 8) + u16(buffer[offset + 2]);
-        let y = (u16(buffer[offset + 3]) << 8) + u16(buffer[offset + 4]);
-        let z = (u16(buffer[offset + 5]) << 8) + u16(buffer[offset + 6]);
+        // XXX: remove f32(x) as it's error prone, use "as f32", like proper
+        // Chad.
+        let x =
+            ((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2])) as i16;
+        let y =
+            ((u16(buffer[offset + 3]) << 8) | u16(buffer[offset + 4])) as i16;
+        let z =
+            ((u16(buffer[offset + 5]) << 8) | u16(buffer[offset + 6])) as i16;
         F32x3 { x: f32(x) * scale,
                 y: f32(y) * scale,
                 z: f32(z) * scale, }
@@ -530,9 +535,9 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     pub fn unscaled_gyro(&mut self) -> Result<I16x3, E> {
         let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
 
-        Ok(I16x3 { x: ((u16(buffer[1]) << 8) + u16(buffer[2])) as i16,
-                   y: ((u16(buffer[3]) << 8) + u16(buffer[4])) as i16,
-                   z: ((u16(buffer[5]) << 8) + u16(buffer[6])) as i16, })
+        Ok(I16x3 { x: ((u16(buffer[1]) << 8) | u16(buffer[2])) as i16,
+                   y: ((u16(buffer[3]) << 8) | u16(buffer[4])) as i16,
+                   z: ((u16(buffer[5]) << 8) | u16(buffer[6])) as i16, })
     }
 
     /// Reads and returns gyroscope measurements scaled and converted to rad/s.
