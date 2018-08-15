@@ -458,8 +458,6 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
                                -> F32x3
         where N: ArrayLength<u8>
     {
-        // XXX: remove f32(x) as it's error prone, use "as f32", like proper
-        // Chad.
         let x =
             ((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2])) as i16;
         let y =
