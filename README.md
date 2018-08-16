@@ -11,6 +11,8 @@
 - Reading the WHO_AM_I registers of mpu9250 and ak8963.
 - Getting resolutions and factory sensitivities.
 
+`Imu` mode also works with mpu6500 (see #1 for details).
+
 ## Basic usage
 
 Include [library](https://crates.io/crates/mpu9250) as a dependency in your Cargo.toml:
