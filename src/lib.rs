@@ -47,8 +47,6 @@
 #![deny(warnings)]
 #![no_std]
 
-// TODO: add gyro fifo conf;
-
 extern crate cast;
 extern crate embedded_hal as hal;
 extern crate generic_array;
@@ -99,6 +97,21 @@ pub struct Mpu9250<SPI, NCS, MODE> {
     _mode: PhantomData<MODE>,
 }
 
+/// MPU Error
+#[derive(Debug, Copy, Clone)]
+pub enum Error<E> {
+    /// WHO_AM_I returned invalid value
+    InvalidDevice,
+    /// Underlying bus error
+    BusError(E),
+}
+
+impl<E> core::convert::From<E> for Error<E> {
+    fn from(error: E) -> Self {
+        Error::BusError(error)
+    }
+}
+
 // 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
 const MMODE: u8 = 0x06;
 
@@ -120,7 +133,10 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
     /// [`Gyro scale`]: ./enum.GyroScale.html
     /// [`AccelDataRateConfig`]: ./enum.AccelDataRateConfig.html
     /// [`GyroTempDataRateConfig`]: ./enum.GyroTempDataRateConfig.html
-    pub fn imu_default<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
+    pub fn imu_default<D>(spi: SPI,
+                          ncs: NCS,
+                          delay: &mut D)
+                          -> Result<Self, Error<E>>
         where D: DelayMs<u8>
     {
         Mpu9250::imu(spi, ncs, delay, None, None, None, None, None)
@@ -143,7 +159,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
                   accel_data_rate_config: Option<AccelDataRateConfig>,
                   gyro_temp_data_rate_config: Option<GyroTempDataRateConfig>,
                   sample_rate_divisor: Option<u8>)
-                  -> Result<Self, E>
+                  -> Result<Self, Error<E>>
         where D: DelayMs<u8>
     {
         let mut mpu9250 =
@@ -161,6 +177,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
                       sample_rate_divisor,
                       _mode: PhantomData, };
         mpu9250.init_mpu(delay)?;
+        mpu9250.check_who_am_i()?;
         Ok(mpu9250)
     }
 
@@ -206,7 +223,10 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
     /// [`Mag scale`]: ./enum.MagScale.html
     /// [`AccelDataRateConfig`]: ./enum.AccelDataRateConfig.html
     /// [`GyroTempDataRateConfig`]: ./enum.GyroTempDataRateConfig.html
-    pub fn marg_default<D>(spi: SPI, ncs: NCS, delay: &mut D) -> Result<Self, E>
+    pub fn marg_default<D>(spi: SPI,
+                           ncs: NCS,
+                           delay: &mut D)
+                           -> Result<Self, Error<E>>
         where D: DelayMs<u8>
     {
         Mpu9250::marg(spi, ncs, delay, None, None, None, None, None, None)
@@ -231,7 +251,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
                    accel_data_rate_config: Option<AccelDataRateConfig>,
                    gyro_temp_data_rate_config: Option<GyroTempDataRateConfig>,
                    sample_rate_divisor: Option<u8>)
-                   -> Result<Self, E>
+                   -> Result<Self, Error<E>>
         where D: DelayMs<u8>
     {
         let mut mpu9250: Mpu9250<SPI, NCS, Marg> =
@@ -249,7 +269,9 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
                       sample_rate_divisor,
                       _mode: PhantomData, };
         mpu9250.init_mpu(delay)?;
+        mpu9250.check_who_am_i()?;
         mpu9250.init_ak8963(delay)?;
+        mpu9250.check_ak8963_who_am_i()?;
         Ok(mpu9250)
     }
 
@@ -396,6 +418,15 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         Ok(())
     }
 
+    fn check_ak8963_who_am_i(&mut self) -> Result<(), Error<E>> {
+        let ak8963_who_am_i = self.ak8963_who_am_i()?;
+        if ak8963_who_am_i == 0x48 {
+            Ok(())
+        } else {
+            Err(Error::InvalidDevice)
+        }
+    }
+
     /// Reads the AK8963 (magnetometer) WHO_AM_I register; should return `0x48`
     pub fn ak8963_who_am_i(&mut self) -> Result<u8, E> {
         self.ak8963_read(ak8963::Register::WHO_AM_I)
@@ -440,7 +471,6 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         self.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
         self.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
         delay.delay_ms(100);
-        // TODO: check .who_am_i and return Err
 
         Ok(())
     }
@@ -780,6 +810,15 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
                   as i16,
                z: ((u16(buffer[offset + 6]) << 8) + u16(buffer[offset + 5]))
                   as i16, }
+    }
+
+    fn check_who_am_i(&mut self) -> Result<(), Error<E>> {
+        let who_am_i = self.who_am_i()?;
+        if who_am_i == 0x71 {
+            Ok(())
+        } else {
+            Err(Error::InvalidDevice)
+        }
     }
 
     /// Destroys the driver recovering the SPI peripheral and the NCS pin
