@@ -50,18 +50,18 @@
 extern crate cast;
 extern crate embedded_hal as hal;
 extern crate generic_array;
+extern crate nalgebra as na;
 
 mod ak8963;
-pub mod vec3;
 
 use core::default::Default;
 use core::marker::PhantomData;
 use core::mem;
-use vec3::*;
 
 use cast::{f32, i32, u16};
 use generic_array::typenum::consts::*;
 use generic_array::{ArrayLength, GenericArray};
+use na::Vector3;
 
 use hal::blocking::delay::DelayMs;
 use hal::blocking::spi;
@@ -84,8 +84,8 @@ pub struct Mpu9250<SPI, NCS, MODE> {
     spi: SPI,
     ncs: NCS,
     // data; factory defaults.
-    mag_sensitivity_adjustments: Vec3<f32>,
-    raw_mag_sensitivity_adjustments: Vec3<u8>,
+    mag_sensitivity_adjustments: Vector3<f32>,
+    raw_mag_sensitivity_adjustments: Vector3<u8>,
     // configuration
     gyro_scale: GyroScale,
     accel_scale: AccelScale,
@@ -165,8 +165,8 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
         let mut mpu9250 =
             Mpu9250 { spi,
                       ncs,
-                      raw_mag_sensitivity_adjustments: Vec3::default(),
-                      mag_sensitivity_adjustments: Vec3::default(),
+                      raw_mag_sensitivity_adjustments: Vector3::zeros(),
+                      mag_sensitivity_adjustments: Vector3::zeros(),
                       gyro_scale: gyro_scale.unwrap_or_default(),
                       accel_scale: accel_scale.unwrap_or_default(),
                       mag_scale: MagScale::default(),
@@ -257,8 +257,8 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         let mut mpu9250: Mpu9250<SPI, NCS, Marg> =
             Mpu9250 { spi,
                       ncs,
-                      raw_mag_sensitivity_adjustments: Vec3::default(),
-                      mag_sensitivity_adjustments: Vec3::default(),
+                      raw_mag_sensitivity_adjustments: Vector3::zeros(),
+                      mag_sensitivity_adjustments: Vector3::zeros(),
                       gyro_scale: gyro_scale.unwrap_or_default(),
                       accel_scale: accel_scale.unwrap_or_default(),
                       mag_scale: mag_scale.unwrap_or_default(),
@@ -295,22 +295,11 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         let mag_y_bias = self.ak8963_read(ak8963::Register::ASAY)?;
         let mag_z_bias = self.ak8963_read(ak8963::Register::ASAZ)?;
         // Return x-axis sensitivity adjustment values, etc.
-        self.raw_mag_sensitivity_adjustments = Vec3 { x: mag_x_bias,
-                                                      y: mag_y_bias,
-                                                      z: mag_z_bias, };
+        self.raw_mag_sensitivity_adjustments =
+            Vector3::new(mag_x_bias, mag_y_bias, mag_z_bias);
         self.mag_sensitivity_adjustments =
-            Vec3 { x: ((self.raw_mag_sensitivity_adjustments.x - 128)
-                       as f32)
-                      / 256.
-                      + 1.,
-                   y: ((self.raw_mag_sensitivity_adjustments.y - 128)
-                       as f32)
-                      / 256.
-                      + 1.,
-                   z: ((self.raw_mag_sensitivity_adjustments.z - 128)
-                       as f32)
-                      / 256.
-                      + 1., };
+            self.raw_mag_sensitivity_adjustments
+                .map(|d| f32(d - 128) / 256. + 1.);
         self.ak8963_write(ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
         // Set magnetometer data resolution and sample ODR
@@ -371,35 +360,36 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
     fn scale_and_correct_mag<N>(&self,
                                 buffer: GenericArray<u8, N>,
                                 offset: usize)
-                                -> Vec3<f32>
+                                -> Vector3<f32>
         where N: ArrayLength<u8>
     {
         let resolution = self.mag_scale.resolution();
-        let raw = self.to_vector_inverted(buffer, offset);
-
-        raw.f32().scale(resolution).scale(self.mag_sensitivity_adjustments)
+        let mut fraw = self.to_vector_inverted(buffer, offset).map(f32);
+        fraw *= resolution;
+        fraw.component_mul_assign(&self.mag_sensitivity_adjustments);
+        fraw
     }
 
     /// Reads and returns raw unscaled Magnetometer measurements (LSB).
-    pub fn unscaled_mag(&mut self) -> Result<Vec3<i16>, E> {
+    pub fn unscaled_mag(&mut self) -> Result<Vector3<i16>, E> {
         let buffer = self.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
         Ok(self.to_vector_inverted(buffer, 0))
     }
 
     /// Read and returns Magnetometer measurements scaled, adjusted for factory
     /// sensitivities, and converted to Teslas.
-    pub fn mag(&mut self) -> Result<Vec3<f32>, E> {
+    pub fn mag(&mut self) -> Result<Vector3<f32>, E> {
         let buffer = self.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
         Ok(self.scale_and_correct_mag(buffer, 0))
     }
 
     /// Returns raw mag sensitivity adjustments
-    pub fn raw_mag_sensitivity_adjustments(&self) -> Vec3<u8> {
+    pub fn raw_mag_sensitivity_adjustments(&self) -> Vector3<u8> {
         self.raw_mag_sensitivity_adjustments
     }
 
     /// Returns mag sensitivity adjustments
-    pub fn mag_sensitivity_adjustments(&self) -> Vec3<f32> {
+    pub fn mag_sensitivity_adjustments(&self) -> Vector3<f32> {
         self.mag_sensitivity_adjustments
     }
 
@@ -478,25 +468,28 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     fn scale_accel<N>(&self,
                       buffer: GenericArray<u8, N>,
                       offset: usize)
-                      -> Vec3<f32>
+                      -> Vector3<f32>
         where N: ArrayLength<u8>
     {
         let resolution = self.accel_scale.resolution();
         let scale = G * resolution;
         let raw = self.to_vector(buffer, offset);
-        raw.f32().scale(scale)
+        let mut fraw = raw.map(f32);
+        fraw *= scale;
+        fraw
     }
 
     fn scale_gyro<N>(&self,
                      buffer: GenericArray<u8, N>,
                      offset: usize)
-                     -> Vec3<f32>
+                     -> Vector3<f32>
         where N: ArrayLength<u8>
     {
         let resolution = self.gyro_scale.resolution();
         let scale = PI_180 * resolution;
-        let raw = self.to_vector(buffer, offset);
-        raw.f32().scale(scale)
+        let mut fraw = self.to_vector(buffer, offset).map(f32);
+        fraw *= scale;
+        fraw
     }
 
     fn scale_temp<N>(&self, buffer: GenericArray<u8, N>, offset: usize) -> f32
@@ -507,25 +500,25 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
-    pub fn unscaled_accel(&mut self) -> Result<Vec3<i16>, E> {
+    pub fn unscaled_accel(&mut self) -> Result<Vector3<i16>, E> {
         let buffer = self.read_many::<U7>(Register::ACCEL_XOUT_H)?;
         Ok(self.to_vector(buffer, 0))
     }
 
     /// Reads and returns accelerometer measurements scaled and converted to g.
-    pub fn accel(&mut self) -> Result<Vec3<f32>, E> {
+    pub fn accel(&mut self) -> Result<Vector3<f32>, E> {
         let buffer = self.read_many::<U7>(Register::ACCEL_XOUT_H)?;
         Ok(self.scale_accel(buffer, 0))
     }
 
     /// Reads and returns unsacled Gyroscope measurements (LSB).
-    pub fn unscaled_gyro(&mut self) -> Result<Vec3<i16>, E> {
+    pub fn unscaled_gyro(&mut self) -> Result<Vector3<i16>, E> {
         let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
         Ok(self.to_vector(buffer, 0))
     }
 
     /// Reads and returns gyroscope measurements scaled and converted to rad/s.
-    pub fn gyro(&mut self) -> Result<Vec3<f32>, E> {
+    pub fn gyro(&mut self) -> Result<Vector3<f32>, E> {
         let buffer = self.read_many::<U7>(Register::GYRO_XOUT_H)?;
         Ok(self.scale_gyro(buffer, 0))
     }
@@ -707,14 +700,14 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         let fifo_count = (u16(buffer[1]) << 8) | u16(buffer[2]);
         // How many sets of full gyro and accelerometer data for averaging
         let packet_count = i32(fifo_count / 12);
-        let mut accel_biases: Vec3<i32> = Vec3::default();
-        let mut gyro_biases: Vec3<i32> = Vec3::default();
+        let mut accel_biases: Vector3<i32> = Vector3::zeros();
+        let mut gyro_biases: Vector3<i32> = Vector3::zeros();
         for _ in 0..packet_count {
             let buffer = self.read_many::<U13>(Register::FIFO_RW)?;
-            let accel_temp = self.to_vector(buffer, 0);
-            let gyro_temp = self.to_vector(buffer, 6);
-            accel_biases += accel_temp.i32();
-            gyro_biases += gyro_temp.i32();
+            let accel_temp = self.to_vector(buffer, 0).map(i32);
+            let gyro_temp = self.to_vector(buffer, 6).map(i32);
+            accel_biases += accel_temp;
+            gyro_biases += gyro_temp;
         }
         accel_biases /= packet_count;
         gyro_biases /= packet_count;
@@ -754,7 +747,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // accelerometer biases calculated above must be divided by 8."""
 
         let buffer = self.read_many::<U7>(Register::XA_OFFSET_H)?;
-        let mut accel_trims = self.to_vector(buffer, 0).i32();
+        let mut accel_trims = self.to_vector(buffer, 0).map(i32);
         // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g
         // (16 g full scale)
         accel_biases /= 8;
@@ -787,29 +780,29 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     fn to_vector<N>(&self,
                     buffer: GenericArray<u8, N>,
                     offset: usize)
-                    -> Vec3<i16>
+                    -> Vector3<i16>
         where N: ArrayLength<u8>
     {
-        Vec3 { x: ((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]))
-                  as i16,
-               y: ((u16(buffer[offset + 3]) << 8) | u16(buffer[offset + 4]))
-                  as i16,
-               z: ((u16(buffer[offset + 5]) << 8) | u16(buffer[offset + 6]))
-                  as i16, }
+        Vector3::new(((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]))
+                     as i16,
+                     ((u16(buffer[offset + 3]) << 8) | u16(buffer[offset + 4]))
+                     as i16,
+                     ((u16(buffer[offset + 5]) << 8) | u16(buffer[offset + 6]))
+                     as i16)
     }
 
     fn to_vector_inverted<N>(&self,
                              buffer: GenericArray<u8, N>,
                              offset: usize)
-                             -> Vec3<i16>
+                             -> Vector3<i16>
         where N: ArrayLength<u8>
     {
-        Vec3 { x: ((u16(buffer[offset + 2]) << 8) + u16(buffer[offset + 1]))
-                  as i16,
-               y: ((u16(buffer[offset + 4]) << 8) + u16(buffer[offset + 3]))
-                  as i16,
-               z: ((u16(buffer[offset + 6]) << 8) + u16(buffer[offset + 5]))
-                  as i16, }
+        Vector3::new(((u16(buffer[offset + 2]) << 8) + u16(buffer[offset + 1]))
+                     as i16,
+                     ((u16(buffer[offset + 4]) << 8) + u16(buffer[offset + 3]))
+                     as i16,
+                     ((u16(buffer[offset + 6]) << 8) + u16(buffer[offset + 5]))
+                     as i16)
     }
 
     fn check_who_am_i(&mut self) -> Result<(), Error<E>> {
@@ -987,9 +980,9 @@ impl Register {
 #[derive(Clone, Copy, Debug)]
 pub struct UnscaledImuMeasurements {
     /// Accelerometer measurements (LSB)
-    pub accel: Vec3<i16>,
+    pub accel: Vector3<i16>,
     /// Gyroscope measurements (LSB)
-    pub gyro: Vec3<i16>,
+    pub gyro: Vector3<i16>,
     /// Temperature sensor measurement (LSB)
     pub temp: u16,
 }
@@ -998,9 +991,9 @@ pub struct UnscaledImuMeasurements {
 #[derive(Clone, Copy, Debug)]
 pub struct ImuMeasurements {
     /// Accelerometer measurements (g)
-    pub accel: Vec3<f32>,
+    pub accel: Vector3<f32>,
     /// Gyroscope measurements (rad/s)
-    pub gyro: Vec3<f32>,
+    pub gyro: Vector3<f32>,
     /// Temperature sensor measurement (C)
     pub temp: f32,
 }
@@ -1009,11 +1002,11 @@ pub struct ImuMeasurements {
 #[derive(Copy, Clone, Debug)]
 pub struct UnscaledMargMeasurements {
     /// Accelerometer measurements (LSB)
-    pub accel: Vec3<i16>,
+    pub accel: Vector3<i16>,
     /// Gyroscope measurements (LSB)
-    pub gyro: Vec3<i16>,
+    pub gyro: Vector3<i16>,
     /// Magnetometer measurements (LSB)
-    pub mag: Vec3<i16>,
+    pub mag: Vector3<i16>,
     /// Temperature sensor measurement (LSB)
     pub temp: u16,
 }
@@ -1023,11 +1016,11 @@ pub struct UnscaledMargMeasurements {
 #[derive(Copy, Clone, Debug)]
 pub struct MargMeasurements {
     /// Accelerometer measurements (g)
-    pub accel: Vec3<f32>,
+    pub accel: Vector3<f32>,
     /// Gyroscope measurements (rad/s)
-    pub gyro: Vec3<f32>,
+    pub gyro: Vector3<f32>,
     /// Magnetometer measurements (T, teslas)
-    pub mag: Vec3<f32>,
+    pub mag: Vector3<f32>,
     /// Temperature sensor measurement (C)
     pub temp: f32,
 }
