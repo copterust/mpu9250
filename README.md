@@ -15,11 +15,12 @@
 
 ## Basic usage
 
-Include [library](https://crates.io/crates/mpu9250) as a dependency in your Cargo.toml:
+Include [library](https://crates.io/crates/mpu9250) as a dependency in your Cargo.toml
+[![crates.io](http://meritbadge.herokuapp.com/mpu9250?style=flat-square)](https://crates.io/crates/mpu9250):
 
 ```
 [dependencies.mpu9250]
-version = "0.2.0" # check most recent version on crates.io
+version = "<version>"
 ```
 
 Use embedded-hal implementation to get SPI, NCS, and delay, then create mpu handle:
