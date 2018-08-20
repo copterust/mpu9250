@@ -50,7 +50,7 @@
 extern crate cast;
 extern crate embedded_hal as hal;
 extern crate generic_array;
-extern crate nalgebra as na;
+extern crate nalgebra;
 
 mod ak8963;
 
@@ -61,7 +61,7 @@ use core::mem;
 use cast::{f32, i32, u16};
 use generic_array::typenum::consts::*;
 use generic_array::{ArrayLength, GenericArray};
-use na::Vector3;
+use nalgebra::{convert, Vector3};
 
 use hal::blocking::delay::DelayMs;
 use hal::blocking::spi;
@@ -364,7 +364,8 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         where N: ArrayLength<u8>
     {
         let resolution = self.mag_scale.resolution();
-        let mut fraw = self.to_vector_inverted(buffer, offset).map(f32);
+        let mut fraw: Vector3<f32> =
+            convert(self.to_vector_inverted(buffer, offset));
         fraw *= resolution;
         fraw.component_mul_assign(&self.mag_sensitivity_adjustments);
         fraw
@@ -473,8 +474,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     {
         let resolution = self.accel_scale.resolution();
         let scale = G * resolution;
-        let raw = self.to_vector(buffer, offset);
-        let mut fraw = raw.map(f32);
+        let mut fraw: Vector3<f32> = convert(self.to_vector(buffer, offset));
         fraw *= scale;
         fraw
     }
@@ -487,7 +487,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     {
         let resolution = self.gyro_scale.resolution();
         let scale = PI_180 * resolution;
-        let mut fraw = self.to_vector(buffer, offset).map(f32);
+        let mut fraw: Vector3<f32> = convert(self.to_vector(buffer, offset));
         fraw *= scale;
         fraw
     }
@@ -702,10 +702,12 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         let packet_count = i32(fifo_count / 12);
         let mut accel_biases: Vector3<i32> = Vector3::zeros();
         let mut gyro_biases: Vector3<i32> = Vector3::zeros();
+        let mut accel_temp: Vector3<i32>;
+        let mut gyro_temp: Vector3<i32>;
         for _ in 0..packet_count {
             let buffer = self.read_many::<U13>(Register::FIFO_RW)?;
-            let accel_temp = self.to_vector(buffer, 0).map(i32);
-            let gyro_temp = self.to_vector(buffer, 6).map(i32);
+            accel_temp = convert(self.to_vector(buffer, 0));
+            gyro_temp = convert(self.to_vector(buffer, 6));
             accel_biases += accel_temp;
             gyro_biases += gyro_temp;
         }
@@ -747,7 +749,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // accelerometer biases calculated above must be divided by 8."""
 
         let buffer = self.read_many::<U7>(Register::XA_OFFSET_H)?;
-        let mut accel_trims = self.to_vector(buffer, 0).map(i32);
+        let mut accel_trims: Vector3<i32> = convert(self.to_vector(buffer, 0));
         // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g
         // (16 g full scale)
         accel_biases /= 8;
