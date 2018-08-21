@@ -61,7 +61,8 @@ use core::mem;
 use cast::{f32, i32, u16};
 use generic_array::typenum::consts::*;
 use generic_array::{ArrayLength, GenericArray};
-use nalgebra::{convert, Vector3};
+use nalgebra::convert;
+pub use nalgebra::Vector3;
 
 use hal::blocking::delay::DelayMs;
 use hal::blocking::spi;
