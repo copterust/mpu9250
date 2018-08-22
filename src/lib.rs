@@ -642,7 +642,9 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     /// Calculates the average of the at-rest readings of accelerometer and
     /// gyroscope and then loads the resulting offsets into accelerometer and
     /// gyro bias registers.
-    pub fn calibrate_at_rest<D>(&mut self, delay: &mut D) -> Result<(), E>
+    // XXX: z values are 0 after calibration.
+    #[allow(dead_code)]
+    fn calibrate_at_rest<D>(&mut self, delay: &mut D) -> Result<(), E>
         where D: DelayMs<u8>
     {
         // First save current values, as we reset them below
@@ -763,19 +765,22 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // accelerometer bias from above
         accel_trims -= accel_biases;
 
-        self.write(Register::XA_OFFSET_H,
-                   ((-accel_trims.x / 4 >> 8) & 0xFF) as u8)?;
-        self.write(Register::XA_OFFSET_L, ((-accel_trims.x / 4) & 0xFF) as u8)?;
-        self.write(Register::YA_OFFSET_H,
-                   ((-accel_trims.y / 4 >> 8) & 0xFF) as u8)?;
-        self.write(Register::YA_OFFSET_L, ((-accel_trims.y / 4) & 0xFF) as u8)?;
-        self.write(Register::ZA_OFFSET_H,
-                   ((-accel_trims.z / 4 >> 8) & 0xFF) as u8)?;
-        self.write(Register::ZA_OFFSET_L, ((-accel_trims.z / 4) & 0xFF) as u8)?;
+        // Apparently this is not working for the acceleration biases in the
+        // MPU-9250 Are we handling the temperature correction bit
+        // properly? Push accelerometer biases to hardware registers
+        // self.write(Register::XA_OFFSET_H,
+        //            ((-accel_trims.x / 4 >> 8) & 0xFF) as u8)?;
+        // self.write(Register::XA_OFFSET_L, ((-accel_trims.x / 4) & 0xFF) as
+        // u8)?; self.write(Register::YA_OFFSET_H,
+        //            ((-accel_trims.y / 4 >> 8) & 0xFF) as u8)?;
+        // self.write(Register::YA_OFFSET_L, ((-accel_trims.y / 4) & 0xFF) as
+        // u8)?; self.write(Register::ZA_OFFSET_H,
+        //            ((-accel_trims.z / 4 >> 8) & 0xFF) as u8)?;
+        // self.write(Register::ZA_OFFSET_L, ((-accel_trims.z / 4) & 0xFF) as
+        // u8)?;
 
         // Set original values back and re-init device
         self.gyro_scale = orig_gyro_scale;
-        self.accel_scale = orig_accel_scale;
         self.accel_scale = orig_accel_scale;
         self.gyro_temp_data_rate_config = orig_gyro_temp_data_rate_config;
         self.accel_data_rate_config = orig_accel_data_rate_config;
