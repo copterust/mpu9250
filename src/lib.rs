@@ -79,6 +79,9 @@ impl MpuMode for Imu {}
 pub struct Marg;
 impl MpuMode for Marg {}
 
+const MPU9250_WHO_AM_I: u8 = 0x71;
+const MPU6500_WHO_AM_I: u8 = 0x70;
+
 /// MPU9250 driver
 pub struct Mpu9250<SPI, NCS, MODE> {
     // connections
@@ -101,9 +104,11 @@ pub struct Mpu9250<SPI, NCS, MODE> {
 /// MPU Error
 #[derive(Debug, Copy, Clone)]
 pub enum Error<E> {
-    /// WHO_AM_I returned invalid value
-    InvalidDevice,
-    /// Underlying bus error
+    /// WHO_AM_I returned invalid value (returned value is argument).
+    InvalidDevice(u8),
+    /// Mode not supported by device (WHO_AM_I is argument)
+    ModeNotSupported(u8),
+    /// Underlying bus error.
     BusError(E),
 }
 
@@ -178,7 +183,8 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
                       sample_rate_divisor,
                       _mode: PhantomData, };
         mpu9250.init_mpu(delay)?;
-        mpu9250.check_who_am_i()?;
+        mpu9250.check_who_am_i(MPU9250_WHO_AM_I)
+               .or_else(|_| mpu9250.check_who_am_i(MPU6500_WHO_AM_I))?;
         Ok(mpu9250)
     }
 
@@ -270,7 +276,11 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
                       sample_rate_divisor,
                       _mode: PhantomData, };
         mpu9250.init_mpu(delay)?;
-        mpu9250.check_who_am_i()?;
+        let r = match mpu9250.check_who_am_i(MPU6500_WHO_AM_I) {
+            Ok(()) => Err(Error::ModeNotSupported(MPU6500_WHO_AM_I)),
+            Err(_) => mpu9250.check_who_am_i(MPU9250_WHO_AM_I),
+        };
+        r?;
         mpu9250.init_ak8963(delay)?;
         mpu9250.check_ak8963_who_am_i()?;
         Ok(mpu9250)
@@ -309,11 +319,6 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
 
         // set aux I2C frequency to 400 KHz (should be configurable?)
         self.write(Register::I2C_MST_CTRL, 0x0d)?;
-
-        // XXX: check who_am_i and return error
-        // debug_assert_eq!(self.ak8963_read(ak8963::Register::WHO_AM_I)?,
-        // 0x48); // FIXME this hangs when compiled in release mode
-        // self.ak8963_write(ak8963::Register::CNTL_2, 0x01)?;
 
         delay.delay_ms(10);
 
@@ -415,7 +420,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         if ak8963_who_am_i == 0x48 {
             Ok(())
         } else {
-            Err(Error::InvalidDevice)
+            Err(Error::InvalidDevice(ak8963_who_am_i))
         }
     }
 
@@ -808,12 +813,12 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
                      as i16)
     }
 
-    fn check_who_am_i(&mut self) -> Result<(), Error<E>> {
+    fn check_who_am_i(&mut self, wai: u8) -> Result<(), Error<E>> {
         let who_am_i = self.who_am_i()?;
-        if who_am_i == 0x71 {
+        if who_am_i == wai {
             Ok(())
         } else {
-            Err(Error::InvalidDevice)
+            Err(Error::InvalidDevice(who_am_i))
         }
     }
 
