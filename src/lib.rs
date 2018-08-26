@@ -462,13 +462,15 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         where D: DelayMs<u8>
     {
         // wake up device
-        self.write(Register::PWR_MGMT_1, 0x00)?; // Clear sleep mode bit (6), enable all sensors
+        self.write(Register::PWR_MGMT_1, 0x00)?;
         delay.delay_ms(100); // Wait for all registers to reset
 
         // get stable time source
         // Auto select clock source to be PLL gyroscope reference if ready else
         // else use the internal oscillator, bits 2:0 = 001
         self.write(Register::PWR_MGMT_1, 0x01)?;
+        // Enable all sensors
+        self.write(Register::PWR_MGMT_2, 0x00)?;
         delay.delay_ms(200);
 
         // Set gyroscope full scale range
@@ -664,11 +666,13 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     }
 
     /// Calculates the average of the at-rest readings of accelerometer and
-    /// gyroscope and then loads the resulting offsets into accelerometer and
-    /// gyro bias registers.
-    // XXX: z values are 0 after calibration.
-    #[allow(dead_code)]
-    fn calibrate_at_rest<D>(&mut self, delay: &mut D) -> Result<(), E>
+    /// gyroscope and then loads the resulting biases into gyro
+    /// offset registers. Accelerometer biases are returned.
+    /// NOTE: MPU has register to store accelerometer biases, but there are
+    ///       some complications, so setting them doesn't work.
+    pub fn calibrate_at_rest<D>(&mut self,
+                                delay: &mut D)
+                                -> Result<Vector3<f32>, E>
         where D: DelayMs<u8>
     {
         // First save current values, as we reset them below
@@ -683,7 +687,8 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // Auto select clock source to be PLL gyroscope reference if ready
         // else use the internal oscillator, bits 2:0 = 001
         self.write(Register::PWR_MGMT_1, 0x01)?;
-        self.write(Register::PWR_MGMT_2, 0x09)?;
+        // Enable all sensors
+        self.write(Register::PWR_MGMT_2, 0x00)?;
         delay.delay_ms(200);
 
         // Configure device for bias calculation
@@ -706,13 +711,11 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         self.gyro_temp_config(GyroTempDataRateConfig::DlpfConf(Dlpf::_1))?;
         self.sample_rate_divisor(0)?;
         // Set gyro full-scale to 250 degrees per second, maximum sensitivity
-        self.gyro_scale(GyroScale::_250DPS)?;
+        // self.gyro_scale(GyroScale::_250DPS)?;
         // Set accelerometer low pass filter to
         self.accel_config(AccelDataRateConfig::DlpfConf(Dlpf::_1))?;
         // Set accelerometer full-scale to 2g, maximum sensitivity
         self.accel_scale(AccelScale::_2G)?;
-
-        let accel_sensitivity: i32 = 16384; //  u16(1/accel_scal.resolution())
 
         // Configure FIFO to capture accelerometer and gyro data for bias
         // calculation
@@ -746,62 +749,25 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         accel_biases /= packet_count;
         gyro_biases /= packet_count;
 
-        // Remove gravity from the z-axis accelerometer bias calculation
-        if accel_biases.z > 0 {
-            accel_biases.z -= accel_sensitivity;
-        } else {
-            accel_biases.z += accel_sensitivity;
-        }
-
         // Construct the gyro biases and push them to the hardware gyro bias
-        // registers, which are reset to zero upon device startup
+        // registers, which are reset to zero upon device startup.
         // Divide by 4 to get 32.9 LSB per deg/s to conform to expected bias
-        // input format Biases are additive, so change sign on
+        // input format.
+        // Biases are additive, so change sign on
         // calculated average gyro biases
-        self.write(Register::XG_OFFSET_H,
-                   ((-gyro_biases.x / 4 >> 8) & 0xFF) as u8)?;
-        self.write(Register::XG_OFFSET_L, ((-gyro_biases.x / 4) & 0xFF) as u8)?;
-        self.write(Register::YG_OFFSET_H,
-                   ((-gyro_biases.y / 4 >> 8) & 0xFF) as u8)?;
-        self.write(Register::YG_OFFSET_L, ((-gyro_biases.y / 4) & 0xFF) as u8)?;
-        self.write(Register::ZG_OFFSET_H,
-                   ((-gyro_biases.z / 4 >> 8) & 0xFF) as u8)?;
-        self.write(Register::ZG_OFFSET_L, ((-gyro_biases.z / 4) & 0xFF) as u8)?;
+        gyro_biases /= -4;
+        self.write(Register::XG_OFFSET_H, ((gyro_biases.x >> 8) & 0xFF) as u8)?;
+        self.write(Register::XG_OFFSET_L, (gyro_biases.x & 0xFF) as u8)?;
+        self.write(Register::YG_OFFSET_H, ((gyro_biases.y >> 8) & 0xFF) as u8)?;
+        self.write(Register::YG_OFFSET_L, (gyro_biases.y & 0xFF) as u8)?;
+        self.write(Register::ZG_OFFSET_H, ((gyro_biases.z >> 8) & 0xFF) as u8)?;
+        self.write(Register::ZG_OFFSET_L, (gyro_biases.z & 0xFF) as u8)?;
 
-        // Construct the accelerometer biases for push to the hardware
-        // accelerometer bias registers. These registers contain factory trim
-        // values which must be added to the calculated accelerometer biases;
-        // on boot up these registers will hold non-zero values.
-
-        // NOTE: Below bit is taken from https://github.com/kriswiner/MPU9250/blob/master/MPU9250_MS5637_AHRS_t3.ino,
-        // but it's not confirmed in documentation.
-        // """In addition, bit 0 of the lower byte must be preserved since it is
-        // used for temperature compensation calculations. Accelerometer bias
-        // registers expect bias input as 2048 LSB per g, so that the
-        // accelerometer biases calculated above must be divided by 8."""
-
-        let buffer = self.read_many::<U7>(Register::XA_OFFSET_H)?;
-        let mut accel_trims: Vector3<i32> = convert(self.to_vector(buffer, 0));
-        // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g
-        // (16 g full scale)
-        accel_biases /= 8;
-        // Construct total accelerometer bias, including calculated average
-        // accelerometer bias from above
-        accel_trims -= accel_biases;
-
-        // Apparently this is not working for the acceleration biases in the
-        // MPU-9250 Are we handling the temperature correction bit
-        // properly? Push accelerometer biases to hardware registers
-        // self.write(Register::XA_OFFSET_H,
-        //            ((-accel_trims.x / 4 >> 8) & 0xFF) as u8)?;
-        // self.write(Register::XA_OFFSET_L, ((-accel_trims.x / 4) & 0xFF) as
-        // u8)?; self.write(Register::YA_OFFSET_H,
-        //            ((-accel_trims.y / 4 >> 8) & 0xFF) as u8)?;
-        // self.write(Register::YA_OFFSET_L, ((-accel_trims.y / 4) & 0xFF) as
-        // u8)?; self.write(Register::ZA_OFFSET_H,
-        //            ((-accel_trims.z / 4 >> 8) & 0xFF) as u8)?;
-        // self.write(Register::ZA_OFFSET_L, ((-accel_trims.z / 4) & 0xFF) as
-        // u8)?;
+        // Compute accelerometer biases to be returned
+        let resolution = self.accel_scale.resolution();
+        let scale = G * resolution;
+        let mut faccel_biases: Vector3<f32> = convert(accel_biases);
+        faccel_biases *= scale;
 
         // Set original values back and re-init device
         self.gyro_scale = orig_gyro_scale;
@@ -811,7 +777,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         self.sample_rate_divisor = orig_sample_rate_divisor;
         self.init_mpu(delay)?;
 
-        Ok(())
+        Ok(faccel_biases)
     }
 
     fn to_vector<N>(&self,
