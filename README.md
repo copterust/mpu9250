@@ -1,6 +1,6 @@
 # `mpu9250`
 
-> no_std driver for the MPU9250 & onboard AK8963 (accelerometer + gyroscope +  magnetometer IMU).
+> no_std driver for the MPU9250 (and some MPU* devices) & onboard AK8963 (accelerometer + gyroscope +  magnetometer IMU).
 
 [![Build Status](https://travis-ci.org/copterust/mpu9250.svg?branch=master)](https://travis-ci.org/copterust/mpu9250)
 
@@ -11,7 +11,16 @@
 - Reading the WHO_AM_I registers of mpu9250 and ak8963.
 - Getting resolutions and factory sensitivities.
 
-`Imu` mode also works with mpu6500 (see #1 for details).
+## Supported chips
+
+* `MPU9250` -- `Imu` and `Marg`;
+* `MPU9255` -- `Imu` and `Marg`;
+* `MPU6500` -- `Imu` only.
+
+### Notes
+
+> MPU9255 has some extra capability in the ASIC that allows some additional
+> gesture control but otherwise this chip is identical to the MPU9250.
 
 ## Basic usage
 

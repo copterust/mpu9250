@@ -79,8 +79,27 @@ impl MpuMode for Imu {}
 pub struct Marg;
 impl MpuMode for Marg {}
 
-const MPU9250_WHO_AM_I: u8 = 0x71;
-const MPU6500_WHO_AM_I: u8 = 0x70;
+/// Suported MPUx devices
+pub enum MpuXDevice {
+    /// MPU 9250
+    MPU9250 = 0x71,
+    /// MPU 9255
+    MPU9255 = 0x73,
+    /// MPU 6500
+    MPU6500 = 0x70,
+}
+
+impl MpuXDevice {
+    fn imu_supported(b: u8) -> bool {
+        b == (MpuXDevice::MPU9250 as u8)
+        || b == (MpuXDevice::MPU9255 as u8)
+        || b == (MpuXDevice::MPU6500 as u8)
+    }
+
+    fn marg_supported(b: u8) -> bool {
+        b == (MpuXDevice::MPU9250 as u8) || b == (MpuXDevice::MPU9255 as u8)
+    }
+}
 
 /// MPU9250 driver
 pub struct Mpu9250<SPI, NCS, MODE> {
@@ -183,9 +202,12 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
                       sample_rate_divisor,
                       _mode: PhantomData, };
         mpu9250.init_mpu(delay)?;
-        mpu9250.check_who_am_i(MPU9250_WHO_AM_I)
-               .or_else(|_| mpu9250.check_who_am_i(MPU6500_WHO_AM_I))?;
-        Ok(mpu9250)
+        let wai = mpu9250.who_am_i()?;
+        if MpuXDevice::imu_supported(wai) {
+            Ok(mpu9250)
+        } else {
+            Err(Error::InvalidDevice(wai))
+        }
     }
 
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
@@ -276,14 +298,16 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
                       sample_rate_divisor,
                       _mode: PhantomData, };
         mpu9250.init_mpu(delay)?;
-        let r = match mpu9250.check_who_am_i(MPU6500_WHO_AM_I) {
-            Ok(()) => Err(Error::ModeNotSupported(MPU6500_WHO_AM_I)),
-            Err(_) => mpu9250.check_who_am_i(MPU9250_WHO_AM_I),
-        };
-        r?;
-        mpu9250.init_ak8963(delay)?;
-        mpu9250.check_ak8963_who_am_i()?;
-        Ok(mpu9250)
+        let wai = mpu9250.who_am_i()?;
+        if MpuXDevice::marg_supported(wai) {
+            mpu9250.init_ak8963(delay)?;
+            mpu9250.check_ak8963_who_am_i()?;
+            Ok(mpu9250)
+        } else if wai == MpuXDevice::MPU6500 as u8 {
+            Err(Error::ModeNotSupported(wai))
+        } else {
+            Err(Error::InvalidDevice(wai))
+        }
     }
 
     fn init_ak8963<D>(&mut self, delay: &mut D) -> Result<(), E>
@@ -818,15 +842,6 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
                      as i16)
     }
 
-    fn check_who_am_i(&mut self, wai: u8) -> Result<(), Error<E>> {
-        let who_am_i = self.who_am_i()?;
-        if who_am_i == wai {
-            Ok(())
-        } else {
-            Err(Error::InvalidDevice(who_am_i))
-        }
-    }
-
     /// Destroys the driver recovering the SPI peripheral and the NCS pin
     pub fn release(self) -> (SPI, NCS) {
         (self.spi, self.ncs)
@@ -967,13 +982,13 @@ enum Register {
     USER_CTRL = 0x6a,
     FIFO_COUNT_H = 0x72,
     FIFO_RW = 0x74,
+    WHO_AM_I = 0x75,
     XA_OFFSET_H = 0x77,
     XA_OFFSET_L = 0x78,
     YA_OFFSET_H = 0x7A,
     YA_OFFSET_L = 0x7B,
     ZA_OFFSET_H = 0x7D,
     ZA_OFFSET_L = 0x7E,
-    WHO_AM_I = 0x75,
 }
 
 const R: u8 = 1 << 7;
