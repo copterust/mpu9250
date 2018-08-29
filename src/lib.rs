@@ -140,7 +140,8 @@ impl<E> core::convert::From<E> for Error<E> {
 // 2 for 8 Hz, 6 for 100 Hz continuous magnetometer data read
 const MMODE: u8 = 0x06;
 
-const G: f32 = 9.807;
+/// G constant
+pub const G: f32 = 9.807;
 const PI_180: f32 = core::f32::consts::PI / 180.;
 const TEMP_SENSITIVITY: f32 = 333.87;
 const TEMP_DIFF: f32 = 21.0;
