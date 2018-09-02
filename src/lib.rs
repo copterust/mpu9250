@@ -129,6 +129,8 @@ pub enum Error<E> {
     ModeNotSupported(u8),
     /// Underlying bus error.
     BusError(E),
+    /// Calibration error (not enough data gathered)
+    CalibrationError,
 }
 
 impl<E> core::convert::From<E> for Error<E> {
@@ -668,13 +670,15 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
 
     /// Calculates the average of the at-rest readings of accelerometer and
     /// gyroscope and then loads the resulting biases into gyro
-    /// offset registers. Accelerometer biases are returned.
+    /// offset registers. Retunrs either Ok with accelerometer biases, or
+    /// Err(Error), where Error::CalibrationError means soft error, and user
+    /// can proceed on their own risk.
     /// NOTE: MPU has register to store accelerometer biases, but there are
     ///       some complications, so setting them doesn't work.
     pub fn calibrate_at_rest<D>(&mut self,
                                 delay: &mut D)
-                                -> Result<Vector3<f32>, E>
-        where D: DelayMs<u8>
+                                -> Result<Vector3<f32>, Error<E>>
+    where D: DelayMs<u8>
     {
         // First save current values, as we reset them below
         let orig_gyro_scale = self.gyro_scale;
@@ -733,9 +737,13 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         self.write(Register::FIFO_EN, 0x00)?;
         // read FIFO sample count
         let buffer = self.read_many::<U3>(Register::FIFO_COUNT_H)?;
-        let fifo_count = (u16(buffer[1]) << 8) | u16(buffer[2]);
+        let fifo_count = ((u16(buffer[1]) << 8) | u16(buffer[2])) as i16;
+        // Aim for at least half
         // How many sets of full gyro and accelerometer data for averaging
         let packet_count = i32(fifo_count / 12);
+        if packet_count < 20 {
+            return Err(Error::CalibrationError)
+        }
         let mut accel_biases: Vector3<i32> = Vector3::zeros();
         let mut gyro_biases: Vector3<i32> = Vector3::zeros();
         let mut accel_temp: Vector3<i32>;
