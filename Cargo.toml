@@ -9,8 +9,8 @@ readme = "Readme.md"
 repository = "https://github.com/copterust/mpu9250"
 
 [dependencies]
-embedded-hal = "0.2.0"
-generic-array = "0.11.0"
+embedded-hal = "0.2.1"
+generic-array = "0.12.0"
 
 [dependencies.cast]
 default-features = false
@@ -18,4 +18,4 @@ version = "0.2.2"
 
 [dependencies.nalgebra]
 default-features = false
-version = "0.16.0"
+version = "0.16.4"
