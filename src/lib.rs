@@ -50,6 +50,7 @@
 #![deny(warnings)]
 #![no_std]
 
+
 extern crate cast;
 extern crate embedded_hal as hal;
 extern crate generic_array;
@@ -193,6 +194,17 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
         }
     }
 
+    /// Configures device using provided [`MpuConfig`].
+    pub fn config(&mut self, config: &mut MpuConfig<Imu>) -> Result<(), E> {
+        transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
+        transpose(config.accel_scale.map(|v| self.accel_scale(v)))?;
+        transpose(config.accel_data_rate.map(|v| self.accel_data_rate(v)))?;
+        transpose(config.gyro_temp_data_rate.map(|v| self.gyro_temp_data_rate(v)))?;
+        transpose(config.sample_rate_divisor.map(|v| self.sample_rate_divisor(v)))?;
+
+        Ok(())
+    }
+
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// measurements (LSB).
     pub fn unscaled_all(&mut self) -> Result<UnscaledImuMeasurements, E> {
@@ -318,6 +330,18 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         self.write(Register::I2C_SLV0_CTRL, 0x87)?;
 
         delay.delay_ms(10);
+        Ok(())
+    }
+
+    /// Configures device using provided [`MpuConfig`].
+    pub fn config(&mut self, config: &mut MpuConfig<Marg>) -> Result<(), E> {
+        transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
+        transpose(config.accel_scale.map(|v| self.accel_scale(v)))?;
+        transpose(config.mag_scale.map(|v| self.mag_scale(v)))?;
+        transpose(config.accel_data_rate.map(|v| self.accel_data_rate(v)))?;
+        transpose(config.gyro_temp_data_rate.map(|v| self.gyro_temp_data_rate(v)))?;
+        transpose(config.sample_rate_divisor.map(|v| self.sample_rate_divisor(v)))?;
+
         Ok(())
     }
 
@@ -989,4 +1013,12 @@ pub struct MargMeasurements {
     pub mag: Vector3<f32>,
     /// Temperature sensor measurement (C)
     pub temp: f32,
+}
+
+fn transpose<T, E>(o: Option<Result<T, E>>) -> Result<Option<T>, E> {
+        match o {
+            Some(Ok(x)) => Ok(Some(x)),
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
 }
