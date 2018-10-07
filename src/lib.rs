@@ -211,7 +211,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
     pub fn unscaled_all(&mut self) -> Result<UnscaledImuMeasurements, E> {
         let buffer = self.read_many::<U15>(Register::ACCEL_XOUT_H)?;
         let accel = self.to_vector(buffer, 0);
-        let temp = (u16(buffer[7]) << 8) | u16(buffer[8]);
+        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
         let gyro = self.to_vector(buffer, 8);
 
         Ok(UnscaledImuMeasurements { accel,
@@ -352,7 +352,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
 
         let accel = self.to_vector(buffer, 0);
-        let temp = (u16(buffer[7]) << 8) | u16(buffer[8]);
+        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16 ;
         let gyro = self.to_vector(buffer, 8);
         let mag = self.to_vector_inverted(buffer, 14);
 
@@ -975,7 +975,7 @@ pub struct UnscaledImuMeasurements {
     /// Gyroscope measurements (LSB)
     pub gyro: Vector3<i16>,
     /// Temperature sensor measurement (LSB)
-    pub temp: u16,
+    pub temp: i16,
 }
 
 /// Scaled IMU measurements converted to units
@@ -999,7 +999,7 @@ pub struct UnscaledMargMeasurements {
     /// Magnetometer measurements (LSB)
     pub mag: Vector3<i16>,
     /// Temperature sensor measurement (LSB)
-    pub temp: u16,
+    pub temp: i16,
 }
 
 /// MARG measurements scaled with respective scales and converted
