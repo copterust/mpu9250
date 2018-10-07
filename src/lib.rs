@@ -22,8 +22,9 @@
 //! let all = mpu.all()?;
 //! println!("{:?}", all);
 //! // One can also use conf module to supply configuration:
-//! let cfg = mpu9250::conf::Config::marg().mag_scale(conf::MagScale::_14BITS);
-//! let mut mpu = Mpu9250::marg(spi, ncs, &mut delay, cfg)?;
+//! let mut mpu = Mpu9250::marg(spi, ncs, &mut delay,
+//!                             MpuConfig::marg()
+//!                                .mag_scale(conf::MagScale::_14BITS))?;
 //! ```
 //!
 //! More examples (for stm32) in [Proving ground] repo.
