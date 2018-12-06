@@ -100,6 +100,12 @@ impl MpuXDevice {
     }
 }
 
+/// MPU9250 driver with Accelerometer + Gyroscope + Temperature Sensor
+pub type Mpu9250Imu<SPI, NCS> = Mpu9250<SPI, NCS, Imu>;
+
+/// MPU9250 driver with Magnetometer + Accelerometer + Gyroscope + Temperature Sensor
+pub type Mpu9250Marg<SPI, NCS> = Mpu9250<SPI, NCS, Marg>;
+
 /// MPU9250 driver
 pub struct Mpu9250<SPI, NCS, MODE> {
     // connections
