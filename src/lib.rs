@@ -22,9 +22,11 @@
 //! let all = mpu.all()?;
 //! println!("{:?}", all);
 //! // One can also use conf module to supply configuration:
-//! let mut mpu = Mpu9250::marg(spi, ncs, &mut delay,
-//!                             MpuConfig::marg()
-//!                                .mag_scale(conf::MagScale::_14BITS))?;
+//! let mut mpu =
+//!     Mpu9250::marg(spi,
+//!                   ncs,
+//!                   &mut delay,
+//!                   MpuConfig::marg().mag_scale(conf::MagScale::_14BITS))?;
 //! ```
 //!
 //! More examples (for stm32) in [Proving ground] repo.
@@ -51,15 +53,14 @@
 #![deny(warnings)]
 #![no_std]
 
-
 extern crate cast;
 extern crate embedded_hal as hal;
 extern crate generic_array;
 extern crate nalgebra;
 
 mod ak8963;
-mod types;
 mod conf;
+mod types;
 
 use core::marker::PhantomData;
 use core::mem;
@@ -182,10 +183,12 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
                       gyro_scale: config.gyro_scale.unwrap_or_default(),
                       accel_scale: config.accel_scale.unwrap_or_default(),
                       mag_scale: MagScale::default(),
-                      accel_data_rate: config.accel_data_rate.unwrap_or_default(),
-                      gyro_temp_data_rate: config.gyro_temp_data_rate.unwrap_or_default(),
+                      accel_data_rate: config.accel_data_rate
+                                             .unwrap_or_default(),
+                      gyro_temp_data_rate: config.gyro_temp_data_rate
+                                                 .unwrap_or_default(),
                       sample_rate_divisor: config.sample_rate_divisor,
-                      _mode: PhantomData, };
+                      _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
         let wai = mpu9250.who_am_i()?;
         if MpuXDevice::imu_supported(wai) {
@@ -200,8 +203,10 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
         transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
         transpose(config.accel_scale.map(|v| self.accel_scale(v)))?;
         transpose(config.accel_data_rate.map(|v| self.accel_data_rate(v)))?;
-        transpose(config.gyro_temp_data_rate.map(|v| self.gyro_temp_data_rate(v)))?;
-        transpose(config.sample_rate_divisor.map(|v| self.sample_rate_divisor(v)))?;
+        transpose(config.gyro_temp_data_rate
+                        .map(|v| self.gyro_temp_data_rate(v)))?;
+        transpose(config.sample_rate_divisor
+                        .map(|v| self.sample_rate_divisor(v)))?;
 
         Ok(())
     }
@@ -216,7 +221,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
 
         Ok(UnscaledImuMeasurements { accel,
                                      gyro,
-                                     temp, })
+                                     temp })
     }
 
     /// Reads and returns Accelerometer + Gyroscope + Thermometer
@@ -230,7 +235,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Imu>
 
         Ok(ImuMeasurements { accel,
                              gyro,
-                             temp, })
+                             temp })
     }
 }
 
@@ -270,12 +275,12 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
                       gyro_scale: config.gyro_scale.unwrap_or_default(),
                       accel_scale: config.accel_scale.unwrap_or_default(),
                       mag_scale: config.mag_scale.unwrap_or_default(),
-                      accel_data_rate:
-                          config.accel_data_rate.unwrap_or_default(),
-                      gyro_temp_data_rate:
-                          config.gyro_temp_data_rate.unwrap_or_default(),
+                      accel_data_rate: config.accel_data_rate
+                                             .unwrap_or_default(),
+                      gyro_temp_data_rate: config.gyro_temp_data_rate
+                                                 .unwrap_or_default(),
                       sample_rate_divisor: config.sample_rate_divisor,
-                      _mode: PhantomData, };
+                      _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
         let wai = mpu9250.who_am_i()?;
         if MpuXDevice::marg_supported(wai) {
@@ -340,8 +345,10 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         transpose(config.accel_scale.map(|v| self.accel_scale(v)))?;
         transpose(config.mag_scale.map(|v| self.mag_scale(v)))?;
         transpose(config.accel_data_rate.map(|v| self.accel_data_rate(v)))?;
-        transpose(config.gyro_temp_data_rate.map(|v| self.gyro_temp_data_rate(v)))?;
-        transpose(config.sample_rate_divisor.map(|v| self.sample_rate_divisor(v)))?;
+        transpose(config.gyro_temp_data_rate
+                        .map(|v| self.gyro_temp_data_rate(v)))?;
+        transpose(config.sample_rate_divisor
+                        .map(|v| self.sample_rate_divisor(v)))?;
 
         Ok(())
     }
@@ -352,14 +359,14 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         let buffer = self.read_many::<U21>(Register::ACCEL_XOUT_H)?;
 
         let accel = self.to_vector(buffer, 0);
-        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16 ;
+        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
         let gyro = self.to_vector(buffer, 8);
         let mag = self.to_vector_inverted(buffer, 14);
 
         Ok(UnscaledMargMeasurements { accel,
                                       gyro,
                                       temp,
-                                      mag, })
+                                      mag })
     }
 
     /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
@@ -375,7 +382,7 @@ impl<E, SPI, NCS> Mpu9250<SPI, NCS, Marg>
         Ok(MargMeasurements { accel,
                               gyro,
                               temp,
-                              mag, })
+                              mag })
     }
 
     fn scale_and_correct_mag<N>(&self,
@@ -551,7 +558,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     /// [`AccelDataRate`]: ./conf/enum.AccelDataRate.html
     pub fn accel_data_rate(&mut self,
                            accel_data_rate: AccelDataRate)
-                        -> Result<(), E> {
+                           -> Result<(), E> {
         self.accel_data_rate = accel_data_rate;
         self._accel_data_rate()
     }
@@ -586,8 +593,8 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     ///
     /// [`GyroTempDataRate`]: ./conf/enum.GyroTempDataRate.html
     pub fn gyro_temp_data_rate(&mut self,
-                            data_rate: GyroTempDataRate)
-                            -> Result<(), E> {
+                               data_rate: GyroTempDataRate)
+                               -> Result<(), E> {
         self.gyro_temp_data_rate = data_rate;
         self._gyro_temp_data_rate()
     }
@@ -666,7 +673,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     pub fn calibrate_at_rest<D>(&mut self,
                                 delay: &mut D)
                                 -> Result<Vector3<f32>, Error<E>>
-    where D: DelayMs<u8>
+        where D: DelayMs<u8>
     {
         // First save current values, as we reset them below
         let orig_gyro_scale = self.gyro_scale;
@@ -730,7 +737,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // How many sets of full gyro and accelerometer data for averaging
         let packet_count = i32(fifo_count / 12);
         if packet_count < 20 {
-            return Err(Error::CalibrationError)
+            return Err(Error::CalibrationError);
         }
         let mut accel_biases: Vector3<i32> = Vector3::zeros();
         let mut gyro_biases: Vector3<i32> = Vector3::zeros();
@@ -900,7 +907,7 @@ impl<SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE> {
 
 /// SPI mode
 pub const MODE: Mode = Mode { polarity: Polarity::IdleHigh,
-                              phase: Phase::CaptureOnSecondTransition, };
+                              phase: Phase::CaptureOnSecondTransition };
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
@@ -1017,9 +1024,9 @@ pub struct MargMeasurements {
 }
 
 fn transpose<T, E>(o: Option<Result<T, E>>) -> Result<Option<T>, E> {
-        match o {
-            Some(Ok(x)) => Ok(Some(x)),
-            Some(Err(e)) => Err(e),
-            None => Ok(None),
-        }
+    match o {
+        Some(Ok(x)) => Ok(Some(x)),
+        Some(Err(e)) => Err(e),
+        None => Ok(None),
+    }
 }
