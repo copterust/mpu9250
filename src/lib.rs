@@ -77,7 +77,7 @@ use hal::digital::OutputPin;
 use hal::spi::{Mode, Phase, Polarity};
 
 pub use conf::*;
-use types::*;
+pub use types::*;
 
 /// Suported MPUx devices
 pub enum MpuXDevice {
