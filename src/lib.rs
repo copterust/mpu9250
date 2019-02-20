@@ -89,6 +89,22 @@ pub enum MpuXDevice {
     MPU6500 = 0x70,
 }
 
+/*
+/// Interrupt configuration
+/// Defaults:
+/// active high, push-pull, 50 us pulse, cleared only by reading INT_STATUS
+pub struct InterrupConfig {
+    /// If set the logic level for INT pin is active low
+    active_low: bool,
+    /// If set INT pin is configured as open drain or push-pull otherwise
+    open_drain: bool,
+    /// If set pin level held until interrupt status is cleared, or for 50 us
+    latch: bool,
+    /// If set interrupt is cleared if any read operation is performed
+    clear_on_any_read: bool,
+}
+*/
+
 impl MpuXDevice {
     fn imu_supported(b: u8) -> bool {
         b == (MpuXDevice::MPU9250 as u8)
