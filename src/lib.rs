@@ -531,16 +531,16 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         (t - TEMP_ROOM_OFFSET) / TEMP_SENSITIVITY + TEMP_DIFF
     }
 
-    /// Enable ONLY THIS specific interrupt
+    /// Enable specific interrupt
     pub fn enable_interrupt(&mut self, ie: InterruptEnable) -> Result<(), E>
     {
-        let bits = ie as u8;
-        self.write(Register::INT_ENABLE, bits)
+        self.modify(Register::INT_ENABLE, |r| r | (ie as u8))
     }
 
-    /// Disable interrupts
-    pub fn disable_interrupts(&mut self) -> Result<(), E> {
-        self.write(Register::INT_ENABLE, 0x00)
+    /// Disable specific interrupt
+    pub fn disable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
+        let bits = (ie as u8);
+        self.modify(Register::INT_ENABLE, |r| r & !bits)
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
