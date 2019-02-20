@@ -50,7 +50,7 @@
 //! [4]: https://github.com/copterust/proving-ground
 
 #![deny(missing_docs)]
-#![deny(warnings)]
+#![allow(warnings)]
 #![no_std]
 
 extern crate cast;
@@ -88,22 +88,6 @@ pub enum MpuXDevice {
     /// MPU 6500
     MPU6500 = 0x70,
 }
-
-/*
-/// Interrupt configuration
-/// Defaults:
-/// active high, push-pull, 50 us pulse, cleared only by reading INT_STATUS
-pub struct InterrupConfig {
-    /// If set the logic level for INT pin is active low
-    active_low: bool,
-    /// If set INT pin is configured as open drain or push-pull otherwise
-    open_drain: bool,
-    /// If set pin level held until interrupt status is cleared, or for 50 us
-    latch: bool,
-    /// If set interrupt is cleared if any read operation is performed
-    clear_on_any_read: bool,
-}
-*/
 
 impl MpuXDevice {
     fn imu_supported(b: u8) -> bool {
@@ -476,7 +460,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         where D: DelayMs<u8>
     {
         // wake up device
-        self.write(Register::PWR_MGMT_1, 0x00)?;
+        self.write(Register::PWR_MGMT_1, 0x80)?;
         delay.delay_ms(100); // Wait for all registers to reset
 
         // get stable time source
@@ -505,8 +489,10 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // HIGH until interrupt cleared, clear on read of INT_STATUS,
         // and enable I2C_BYPASS_EN so
         // additional chips can join the I2C bus
-        self.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
-        self.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
+        // self.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
+        // self.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
+        // Reset interrupts state
+        self.write(Register::INT_ENABLE, 0x00)?;
         delay.delay_ms(100);
 
         Ok(())
@@ -543,6 +529,18 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     {
         let t = f32((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]));
         (t - TEMP_ROOM_OFFSET) / TEMP_SENSITIVITY + TEMP_DIFF
+    }
+
+    /// Enable ONLY THIS specific interrupt
+    pub fn enable_interrupt(&mut self, ie: InterruptEnable) -> Result<(), E>
+    {
+        let bits = ie as u8;
+        self.write(Register::INT_ENABLE, bits)
+    }
+
+    /// Disable interrupts
+    pub fn disable_interrupts(&mut self) -> Result<(), E> {
+        self.write(Register::INT_ENABLE, 0x00)
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).

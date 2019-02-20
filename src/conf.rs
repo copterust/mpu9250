@@ -323,3 +323,33 @@ impl MpuConfig<types::Marg> {
         self
     }
 }
+
+#[derive(Copy, Clone, Debug)]
+#[allow(non_camel_case_types)]
+/// Enable interrupt for:
+pub enum InterruptEnable {
+    /// Wake up on motion
+    WOM_EN = 0b0100_0000,
+    /// FIFO overflow
+    FIFO_OVERFLOW_EN = 0b0001_0000,
+    /// fsync
+    FSYNC_INT_EN = 0b0000_1000,
+    /// raw sensor data ready
+    RAW_RDY_EN = 0b0000_0001,
+}
+
+/*
+/// Interrupt configuration
+/// Defaults:
+/// active high, push-pull, 50 us pulse, cleared only by reading INT_STATUS
+pub struct InterrupConfig {
+    /// If set the logic level for INT pin is active low
+    active_low: bool,
+    /// If set INT pin is configured as open drain or push-pull otherwise
+    open_drain: bool,
+    /// If set pin level held until interrupt status is cleared, or for 50 us
+    latch: bool,
+    /// If set interrupt is cleared if any read operation is performed
+    clear_on_any_read: bool,
+}
+*/
