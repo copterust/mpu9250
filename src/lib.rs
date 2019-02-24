@@ -75,6 +75,7 @@ use nalgebra::convert;
 pub use nalgebra::Vector3;
 
 use hal::blocking::delay::DelayMs;
+use hal::blocking::i2c;
 use hal::blocking::spi;
 use hal::digital::OutputPin;
 use hal::spi::{Mode, Phase, Polarity};
@@ -154,6 +155,7 @@ const TEMP_SENSITIVITY: f32 = 333.87;
 const TEMP_DIFF: f32 = 21.0;
 const TEMP_ROOM_OFFSET: f32 = 0.0;
 
+// SPI device, 6DOF
 impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Imu>
     where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
           NCS: OutputPin
@@ -201,48 +203,9 @@ impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Imu>
             Err(Error::InvalidDevice(wai))
         }
     }
-
-    /// Configures device using provided [`MpuConfig`].
-    pub fn config(&mut self, config: &mut MpuConfig<Imu>) -> Result<(), E> {
-        transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
-        transpose(config.accel_scale.map(|v| self.accel_scale(v)))?;
-        transpose(config.accel_data_rate.map(|v| self.accel_data_rate(v)))?;
-        transpose(config.gyro_temp_data_rate
-                        .map(|v| self.gyro_temp_data_rate(v)))?;
-        transpose(config.sample_rate_divisor
-                        .map(|v| self.sample_rate_divisor(v)))?;
-
-        Ok(())
-    }
-
-    /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
-    /// measurements (LSB).
-    pub fn unscaled_all(&mut self) -> Result<UnscaledImuMeasurements, E> {
-        let buffer = self.dev.read_many::<U15>(Register::ACCEL_XOUT_H)?;
-        let accel = self.to_vector(buffer, 0);
-        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
-        let gyro = self.to_vector(buffer, 8);
-
-        Ok(UnscaledImuMeasurements { accel,
-                                     gyro,
-                                     temp })
-    }
-
-    /// Reads and returns Accelerometer + Gyroscope + Thermometer
-    /// measurements scaled and converted to respective units.
-    pub fn all(&mut self) -> Result<ImuMeasurements, E> {
-        let buffer = self.dev.read_many::<U15>(Register::ACCEL_XOUT_H)?;
-
-        let accel = self.scale_accel(buffer, 0);
-        let temp = self.scale_temp(buffer, 6);
-        let gyro = self.scale_gyro(buffer, 8);
-
-        Ok(ImuMeasurements { accel,
-                             gyro,
-                             temp })
-    }
 }
 
+// SPI device, 9 DOF
 impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Marg>
     where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
           NCS: OutputPin
@@ -296,7 +259,77 @@ impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Marg>
             Err(Error::InvalidDevice(wai))
         }
     }
+}
 
+// SPI device, any mode
+impl<E, SPI, NCS, MODE> Mpu9250<SpiDevice<SPI, NCS>, MODE>
+    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+          NCS: OutputPin
+{
+    /// Destroys the driver recovering the SPI peripheral and the NCS pin
+    pub fn release(self) -> (SPI, NCS) {
+        self.dev.release()
+    }
+}
+
+// I2C device, any mode
+impl<E, I2C, MODE> Mpu9250<I2cDevice<I2C>, MODE>
+    where I2C: i2c::Read<Error = E> + i2c::Write<Error = E> + i2c::WriteRead<Error = E>
+{
+    /// Destroys the driver, recovering the I2C peripheral
+    pub fn release(self) -> I2C {
+        self.dev.release()
+    }
+}
+
+// Any device, 6DOF
+impl<E, DEV> Mpu9250<DEV, Imu>
+    where DEV: Device<Error = E>
+{
+    /// Configures device using provided [`MpuConfig`].
+    pub fn config(&mut self, config: &mut MpuConfig<Imu>) -> Result<(), E> {
+        transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
+        transpose(config.accel_scale.map(|v| self.accel_scale(v)))?;
+        transpose(config.accel_data_rate.map(|v| self.accel_data_rate(v)))?;
+        transpose(config.gyro_temp_data_rate
+                        .map(|v| self.gyro_temp_data_rate(v)))?;
+        transpose(config.sample_rate_divisor
+                        .map(|v| self.sample_rate_divisor(v)))?;
+
+        Ok(())
+    }
+
+    /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
+    /// measurements (LSB).
+    pub fn unscaled_all(&mut self) -> Result<UnscaledImuMeasurements, E> {
+        let buffer = self.dev.read_many::<U15>(Register::ACCEL_XOUT_H)?;
+        let accel = self.to_vector(buffer, 0);
+        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
+        let gyro = self.to_vector(buffer, 8);
+
+        Ok(UnscaledImuMeasurements { accel,
+                                     gyro,
+                                     temp })
+    }
+
+    /// Reads and returns Accelerometer + Gyroscope + Thermometer
+    /// measurements scaled and converted to respective units.
+    pub fn all(&mut self) -> Result<ImuMeasurements, E> {
+        let buffer = self.dev.read_many::<U15>(Register::ACCEL_XOUT_H)?;
+
+        let accel = self.scale_accel(buffer, 0);
+        let temp = self.scale_temp(buffer, 6);
+        let gyro = self.scale_gyro(buffer, 8);
+
+        Ok(ImuMeasurements { accel,
+                             gyro,
+                             temp })
+    }
+}
+
+// Any device, 9DOF
+impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
+{
     fn init_ak8963<D>(&mut self, delay: &mut D) -> Result<(), E>
         where D: DelayMs<u8>
     {
@@ -457,16 +490,7 @@ impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Marg>
     }
 }
 
-impl<E, SPI, NCS, MODE> Mpu9250<SpiDevice<SPI, NCS>, MODE>
-    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-          NCS: OutputPin
-{
-    /// Destroys the driver recovering the SPI peripheral and the NCS pin
-    pub fn release(self) -> (SPI, NCS) {
-        self.dev.release()
-    }
-}
-
+// Any device, any mode
 impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
 {
     fn init_mpu<D>(&mut self, delay: &mut D) -> Result<(), E>
@@ -876,7 +900,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     }
 }
 
-impl<SPI, NCS, MODE> Mpu9250<SpiDevice<SPI, NCS>, MODE> {
+// Any device, any mode, no possible errors
+impl<DEV, MODE> Mpu9250<DEV, MODE> {
     /// Returns Accelerometer resolution.
     pub fn accel_resolution(&self) -> f32 {
         self.accel_scale.resolution()
