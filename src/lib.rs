@@ -467,10 +467,8 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // Auto select clock source to be PLL gyroscope reference if ready else
         // else use the internal oscillator, bits 2:0 = 001
         self.write(Register::PWR_MGMT_1, 0x01)?;
-        delay.delay_ms(100); // Wait
-                             // Enable all sensors
+        // Enable all sensors
         self.write(Register::PWR_MGMT_2, 0x00)?;
-        delay.delay_ms(100);
 
         // Set gyroscope full scale range
         self._gyro_scale()?;
@@ -487,7 +485,6 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
 
         // Reset interrupts state
         self.write(Register::INT_ENABLE, 0x00)?;
-        delay.delay_ms(100);
 
         Ok(())
     }
@@ -887,6 +884,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         Ok(buffer)
     }
 
+    #[inline(never)]
     fn write(&mut self, reg: Register, val: u8) -> Result<(), E> {
         self.ncs.set_low();
         self.spi.write(&[reg.write_address(), val])?;
