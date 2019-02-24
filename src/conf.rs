@@ -224,16 +224,13 @@ impl MpuConfig<types::Imu> {
     /// [`AccelDataRate`]: ./enum.AccelDataRate.html
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     pub fn imu() -> Self {
-        MpuConfig {
-            gyro_scale: None,
-            accel_scale: None,
-            mag_scale: None,
-            accel_data_rate: None,
-            gyro_temp_data_rate: None,
-            sample_rate_divisor: None,
-            _mode: PhantomData
-        }
-
+        MpuConfig { gyro_scale: None,
+                    accel_scale: None,
+                    mag_scale: None,
+                    accel_data_rate: None,
+                    gyro_temp_data_rate: None,
+                    sample_rate_divisor: None,
+                    _mode: PhantomData }
     }
 }
 
@@ -250,16 +247,13 @@ impl MpuConfig<types::Marg> {
     /// [`AccelDataRate`]: ./enum.AccelDataRate.html
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     pub fn marg() -> Self {
-        MpuConfig {
-            gyro_scale: None,
-            accel_scale: None,
-            mag_scale: None,
-            accel_data_rate: None,
-            gyro_temp_data_rate: None,
-            sample_rate_divisor: None,
-            _mode: PhantomData
-        }
-
+        MpuConfig { gyro_scale: None,
+                    accel_scale: None,
+                    mag_scale: None,
+                    accel_data_rate: None,
+                    gyro_temp_data_rate: None,
+                    sample_rate_divisor: None,
+                    _mode: PhantomData }
     }
 }
 
@@ -283,8 +277,7 @@ impl<MODE> MpuConfig<MODE> {
     /// Sets accelerometer data rate config ([`AccelDataRate`]).
     ///
     /// [`AccelDataRate`]: ./conf/enum.AccelDataRate.html
-    pub fn accel_data_rate(&mut self, data_rate: AccelDataRate)
-                           -> &mut Self {
+    pub fn accel_data_rate(&mut self, data_rate: AccelDataRate) -> &mut Self {
         self.accel_data_rate = Some(data_rate);
         self
     }
@@ -324,18 +317,20 @@ impl MpuConfig<types::Marg> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-#[allow(non_camel_case_types)]
-/// Enable interrupt for:
-pub enum InterruptEnable {
-    /// Wake up on motion
-    WOM_EN = 0b0100_0000,
-    /// FIFO overflow
-    FIFO_OVERFLOW_EN = 0b0001_0000,
-    /// fsync
-    FSYNC_INT_EN = 0b0000_1000,
-    /// raw sensor data ready
-    RAW_RDY_EN = 0b0000_0001,
+// #[derive(Copy, Clone, Debug)]
+bitflags! {
+    /// Enable interrupt for:
+    #[allow(non_camel_case_types)]
+    pub struct InterruptEnable: u8 {
+        /// Wake up on motion
+        const WOM_EN = 0b0100_0000;
+        /// FIFO overflow
+        const FIFO_OVERFLOW_EN = 0b0001_0000;
+        /// fsync
+        const FSYNC_INT_EN = 0b0000_1000;
+        /// raw sensor data ready
+        const RAW_RDY_EN = 0b0000_0001;
+    }
 }
 
 /*

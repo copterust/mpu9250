@@ -53,6 +53,8 @@
 #![allow(warnings)]
 #![no_std]
 
+#[macro_use]
+extern crate bitflags;
 extern crate cast;
 extern crate embedded_hal as hal;
 extern crate generic_array;
@@ -522,15 +524,20 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         (t - TEMP_ROOM_OFFSET) / TEMP_SENSITIVITY + TEMP_DIFF
     }
 
-    /// Enable specific interrupt
-    pub fn enable_interrupt(&mut self, ie: InterruptEnable) -> Result<(), E> {
-        self.modify(Register::INT_ENABLE, |r| r | (ie as u8))
+    /// Get enabled interrupts
+    pub fn get_enabled_interrupts(&mut self) -> Result<InterruptEnable, E> {
+        let bits = self.read(Register::INT_ENABLE)?;
+        Ok(InterruptEnable::from_bits_truncate(bits))
     }
 
-    /// Disable specific interrupt
+    /// Enable specific interrupts
+    pub fn enable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
+        self.modify(Register::INT_ENABLE, |r| r | ie.bits())
+    }
+
+    /// Disable specific interrupts
     pub fn disable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
-        let bits = (ie as u8);
-        self.modify(Register::INT_ENABLE, |r| r & !bits)
+        self.modify(Register::INT_ENABLE, |r| r & !ie.bits())
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
