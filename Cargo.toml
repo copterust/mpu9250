@@ -20,3 +20,8 @@ version = "0.2.2"
 [dependencies.nalgebra]
 default-features = false
 version = "0.16.4"
+
+[features]
+# Enable the I2C MPU interface. This disables the SPI interface. All function
+# names remain consistent. Arguments change from (SPI, nCS) pairs to I2C
+i2c = []

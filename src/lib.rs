@@ -155,137 +155,201 @@ const TEMP_SENSITIVITY: f32 = 333.87;
 const TEMP_DIFF: f32 = 21.0;
 const TEMP_ROOM_OFFSET: f32 = 0.0;
 
-// SPI device, 6DOF
-impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Imu>
-    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-          NCS: OutputPin
-{
-    /// Creates a new [`Imu`] driver from a SPI peripheral and a NCS pin
-    /// with default configuration.
-    pub fn imu_default<D>(spi: SPI,
-                          ncs: NCS,
-                          delay: &mut D)
-                          -> Result<Self, Error<E>>
-        where D: DelayMs<u8>
+/// SPI device definitions
+#[cfg(not(feature = "i2c"))]
+mod spi_defs {
+    use super::*;
+
+    // SPI device, 6DOF
+    impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Imu>
+        where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+            NCS: OutputPin
     {
-        Mpu9250::imu(spi, ncs, delay, &mut MpuConfig::imu())
+        /// Creates a new [`Imu`] driver from a SPI peripheral and a NCS pin
+        /// with default configuration.
+        pub fn imu_default<D>(spi: SPI,
+                            ncs: NCS,
+                            delay: &mut D)
+                            -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            Mpu9250::imu(spi, ncs, delay, &mut MpuConfig::imu())
+        }
+
+        /// Creates a new Imu driver from a SPI peripheral and a NCS pin with
+        /// provided configuration [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn imu<D>(spi: SPI,
+                    ncs: NCS,
+                    delay: &mut D,
+                    config: &mut MpuConfig<Imu>)
+                    -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            let dev = SpiDevice::new(spi, ncs);
+            Mpu9250::new_imu(dev, delay, config)
+        }
     }
 
-    /// Creates a new Imu driver from a SPI peripheral and a NCS pin with
-    /// provided configuration [`Config`].
-    ///
-    /// [`Config`]: ./conf/struct.MpuConfig.html
-    pub fn imu<D>(spi: SPI,
-                  ncs: NCS,
-                  delay: &mut D,
-                  config: &mut MpuConfig<Imu>)
-                  -> Result<Self, Error<E>>
-        where D: DelayMs<u8>
+    // SPI device, 9 DOF
+    impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Marg>
+        where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+            NCS: OutputPin
     {
-        let mut mpu9250 =
-            Mpu9250 { dev: SpiDevice::new(spi, ncs),
-                      raw_mag_sensitivity_adjustments: Vector3::zeros(),
-                      mag_sensitivity_adjustments: Vector3::zeros(),
-                      gyro_scale: config.gyro_scale.unwrap_or_default(),
-                      accel_scale: config.accel_scale.unwrap_or_default(),
-                      mag_scale: MagScale::default(),
-                      accel_data_rate: config.accel_data_rate
-                                             .unwrap_or_default(),
-                      gyro_temp_data_rate: config.gyro_temp_data_rate
-                                                 .unwrap_or_default(),
-                      sample_rate_divisor: config.sample_rate_divisor,
-                      _mode: PhantomData };
-        mpu9250.init_mpu(delay)?;
-        let wai = mpu9250.who_am_i()?;
-        if MpuXDevice::imu_supported(wai) {
-            Ok(mpu9250)
-        } else {
-            Err(Error::InvalidDevice(wai))
+        /// Creates a new [`Marg`] driver from a SPI peripheral and a NCS pin with
+        /// default [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg_default<D>(spi: SPI,
+                            ncs: NCS,
+                            delay: &mut D)
+                            -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            Mpu9250::marg(spi, ncs, delay, &mut MpuConfig::marg())
+        }
+
+        /// Creates a new MARG driver from a SPI peripheral and a NCS pin
+        /// with provided configuration [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg<D>(spi: SPI,
+                    ncs: NCS,
+                    delay: &mut D,
+                    config: &mut MpuConfig<Marg>)
+                    -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            let dev = SpiDevice::new(spi, ncs);
+            Self::new_marg(dev, delay, config)
+        }
+    }
+
+    // SPI device, any mode
+    impl<E, SPI, NCS, MODE> Mpu9250<SpiDevice<SPI, NCS>, MODE>
+        where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+            NCS: OutputPin
+    {
+        /// Destroys the driver recovering the SPI peripheral and the NCS pin
+        pub fn release(self) -> (SPI, NCS) {
+            self.dev.release()
         }
     }
 }
 
-// SPI device, 9 DOF
-impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Marg>
-    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-          NCS: OutputPin
-{
-    /// Creates a new [`Marg`] driver from a SPI peripheral and a NCS pin with
-    /// default [`Config`].
-    ///
-    /// [`Config`]: ./conf/struct.MpuConfig.html
-    pub fn marg_default<D>(spi: SPI,
-                           ncs: NCS,
-                           delay: &mut D)
-                           -> Result<Self, Error<E>>
-        where D: DelayMs<u8>
+#[cfg(not(feature = "i2c"))]
+pub use spi_defs::*;
+
+#[cfg(feature = "i2c")]
+mod i2c_defs {
+    use super::*;
+
+    impl<E, I2C> Mpu9250<I2cDevice<I2C>, Imu>
+        where I2C: i2c::Read<Error = E> + i2c::Write<Error = E> + i2c::WriteRead<Error = E>
     {
-        Mpu9250::marg(spi, ncs, delay, &mut MpuConfig::marg())
+        /// Creates a new [`Imu`] driver from an I2C peripheral
+        /// with default configuration.
+        pub fn imu_default<D>(i2c: I2C,
+                            delay: &mut D)
+                            -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            Mpu9250::imu(i2c, delay, &mut MpuConfig::imu())
+        }
+
+        /// Creates a new Imu driver from an I2C peripheral with the
+        /// provided configuration [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn imu<D>(i2c: I2C,
+                    delay: &mut D,
+                    config: &mut MpuConfig<Imu>)
+                    -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            let dev = I2cDevice::new(i2c);
+            Mpu9250::new_imu(dev, delay, config)
+        }
     }
 
-    /// Creates a new MARG driver from a SPI peripheral and a NCS pin
-    /// with provided configuration [`Config`].
-    ///
-    /// [`Config`]: ./conf/struct.MpuConfig.html
-    pub fn marg<D>(spi: SPI,
-                   ncs: NCS,
-                   delay: &mut D,
-                   config: &mut MpuConfig<Marg>)
-                   -> Result<Self, Error<E>>
-        where D: DelayMs<u8>
+    impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
+        where I2C: i2c::Read<Error = E> + i2c::Write<Error = E> + i2c::WriteRead<Error = E>
     {
-        let mut mpu9250 =
-            Mpu9250 { dev: SpiDevice::new(spi, ncs),
-                      raw_mag_sensitivity_adjustments: Vector3::zeros(),
-                      mag_sensitivity_adjustments: Vector3::zeros(),
-                      gyro_scale: config.gyro_scale.unwrap_or_default(),
-                      accel_scale: config.accel_scale.unwrap_or_default(),
-                      mag_scale: config.mag_scale.unwrap_or_default(),
-                      accel_data_rate: config.accel_data_rate
-                                             .unwrap_or_default(),
-                      gyro_temp_data_rate: config.gyro_temp_data_rate
-                                                 .unwrap_or_default(),
-                      sample_rate_divisor: config.sample_rate_divisor,
-                      _mode: PhantomData };
-        mpu9250.init_mpu(delay)?;
-        let wai = mpu9250.who_am_i()?;
-        if MpuXDevice::marg_supported(wai) {
-            mpu9250.init_ak8963(delay)?;
-            mpu9250.check_ak8963_who_am_i()?;
-            Ok(mpu9250)
-        } else if wai == MpuXDevice::MPU6500 as u8 {
-            Err(Error::ModeNotSupported(wai))
-        } else {
-            Err(Error::InvalidDevice(wai))
+        /// Creates a new [`Marg`] driver from an I2C peripheral with
+        /// default [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg_default<D>(i2c: I2C,
+                            delay: &mut D)
+                            -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            Mpu9250::marg(i2c, delay, &mut MpuConfig::marg())
+        }
+
+        /// Creates a new MARG driver from an I2C peripheral
+        /// with provided configuration [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg<D>(i2c: I2C,
+                    delay: &mut D,
+                    config: &mut MpuConfig<Marg>)
+                    -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            let dev = I2cDevice::new(i2c);
+            Self::new_marg(dev, delay, config)
+        }
+    }
+
+    // I2C device, any mode
+    impl<E, I2C, MODE> Mpu9250<I2cDevice<I2C>, MODE>
+        where I2C: i2c::Read<Error = E> + i2c::Write<Error = E> + i2c::WriteRead<Error = E>
+    {
+        /// Destroys the driver, recovering the I2C peripheral
+        pub fn release(self) -> I2C {
+            self.dev.release()
         }
     }
 }
 
-// SPI device, any mode
-impl<E, SPI, NCS, MODE> Mpu9250<SpiDevice<SPI, NCS>, MODE>
-    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-          NCS: OutputPin
-{
-    /// Destroys the driver recovering the SPI peripheral and the NCS pin
-    pub fn release(self) -> (SPI, NCS) {
-        self.dev.release()
-    }
-}
-
-// I2C device, any mode
-impl<E, I2C, MODE> Mpu9250<I2cDevice<I2C>, MODE>
-    where I2C: i2c::Read<Error = E> + i2c::Write<Error = E> + i2c::WriteRead<Error = E>
-{
-    /// Destroys the driver, recovering the I2C peripheral
-    pub fn release(self) -> I2C {
-        self.dev.release()
-    }
-}
+#[cfg(feature = "i2c")]
+pub use i2c_defs::*;
 
 // Any device, 6DOF
 impl<E, DEV> Mpu9250<DEV, Imu>
     where DEV: Device<Error = E>
 {
+    /// Private constructor that creates an IMU-based MPU with the
+    /// specified device.
+    fn new_imu<D>(dev: DEV, delay: &mut D,
+                    config: &mut MpuConfig<Imu>)
+                    -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+    {
+        let mut mpu9250 =
+                Mpu9250 { dev,
+                        raw_mag_sensitivity_adjustments: Vector3::zeros(),
+                        mag_sensitivity_adjustments: Vector3::zeros(),
+                        gyro_scale: config.gyro_scale.unwrap_or_default(),
+                        accel_scale: config.accel_scale.unwrap_or_default(),
+                        mag_scale: MagScale::default(),
+                        accel_data_rate: config.accel_data_rate
+                                                .unwrap_or_default(),
+                        gyro_temp_data_rate: config.gyro_temp_data_rate
+                                                    .unwrap_or_default(),
+                        sample_rate_divisor: config.sample_rate_divisor,
+                        _mode: PhantomData };
+            mpu9250.init_mpu(delay)?;
+            let wai = mpu9250.who_am_i()?;
+            if MpuXDevice::imu_supported(wai) {
+                Ok(mpu9250)
+            } else {
+                Err(Error::InvalidDevice(wai))
+            }
+    }
+
     /// Configures device using provided [`MpuConfig`].
     pub fn config(&mut self, config: &mut MpuConfig<Imu>) -> Result<(), E> {
         transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
@@ -330,6 +394,40 @@ impl<E, DEV> Mpu9250<DEV, Imu>
 // Any device, 9DOF
 impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
 {
+    // Private constructor that creates a MARG-based MPU with
+    // the specificed device.
+    fn new_marg<D>(dev: DEV, 
+        delay: &mut D,
+                    config: &mut MpuConfig<Marg>)
+                    -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+    {
+        let mut mpu9250 =
+                Mpu9250 { dev,
+                        raw_mag_sensitivity_adjustments: Vector3::zeros(),
+                        mag_sensitivity_adjustments: Vector3::zeros(),
+                        gyro_scale: config.gyro_scale.unwrap_or_default(),
+                        accel_scale: config.accel_scale.unwrap_or_default(),
+                        mag_scale: config.mag_scale.unwrap_or_default(),
+                        accel_data_rate: config.accel_data_rate
+                                                .unwrap_or_default(),
+                        gyro_temp_data_rate: config.gyro_temp_data_rate
+                                                    .unwrap_or_default(),
+                        sample_rate_divisor: config.sample_rate_divisor,
+                        _mode: PhantomData };
+        mpu9250.init_mpu(delay)?;
+        let wai = mpu9250.who_am_i()?;
+        if MpuXDevice::marg_supported(wai) {
+            mpu9250.init_ak8963(delay)?;
+            mpu9250.check_ak8963_who_am_i()?;
+            Ok(mpu9250)
+        } else if wai == MpuXDevice::MPU6500 as u8 {
+            Err(Error::ModeNotSupported(wai))
+        } else {
+            Err(Error::InvalidDevice(wai))
+        }
+    }
+
     fn init_ak8963<D>(&mut self, delay: &mut D) -> Result<(), E>
         where D: DelayMs<u8>
     {
