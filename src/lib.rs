@@ -467,9 +467,10 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // Auto select clock source to be PLL gyroscope reference if ready else
         // else use the internal oscillator, bits 2:0 = 001
         self.write(Register::PWR_MGMT_1, 0x01)?;
-        // Enable all sensors
+        delay.delay_ms(100); // Wait
+                             // Enable all sensors
         self.write(Register::PWR_MGMT_2, 0x00)?;
-        delay.delay_ms(200);
+        delay.delay_ms(100);
 
         // Set gyroscope full scale range
         self._gyro_scale()?;
@@ -484,13 +485,6 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
         // Set smplrt_div if present
         self._sample_rate_divisor()?;
 
-        // Configure Interrupts and Bypass Enable
-        // Set interrupt pin active high, push-pull, hold interrupt pin level
-        // HIGH until interrupt cleared, clear on read of INT_STATUS,
-        // and enable I2C_BYPASS_EN so
-        // additional chips can join the I2C bus
-        // self.write(Register::INT_PIN_CFG, 0x12)?; // INT is 50 microsecond pulse and any read to clear
-        // self.write(Register::INT_ENABLE, 0x01)?; // Enable data ready (bit 0) interrupt
         // Reset interrupts state
         self.write(Register::INT_ENABLE, 0x00)?;
         delay.delay_ms(100);
@@ -532,8 +526,7 @@ impl<E, SPI, NCS, MODE> Mpu9250<SPI, NCS, MODE>
     }
 
     /// Enable specific interrupt
-    pub fn enable_interrupt(&mut self, ie: InterruptEnable) -> Result<(), E>
-    {
+    pub fn enable_interrupt(&mut self, ie: InterruptEnable) -> Result<(), E> {
         self.modify(Register::INT_ENABLE, |r| r | (ie as u8))
     }
 
