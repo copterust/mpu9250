@@ -35,7 +35,7 @@ fn main() {
     ncs.set_direction(Direction::Out).unwrap();
     ncs.set_value(1).unwrap();
 
-    let mut mpu9250 = Mpu9250::marg(spi, ncs, &mut Delay).unwrap();
+    let mut mpu9250 = Mpu9250::marg_default(spi, ncs, &mut Delay).unwrap();
 
     let who_am_i = mpu9250.who_am_i().unwrap();
     let ak8963_who_am_i = mpu9250.ak8963_who_am_i().unwrap();
