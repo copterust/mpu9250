@@ -84,7 +84,8 @@ pub use conf::*;
 pub use types::*;
 
 #[doc(hidden)]
-pub use device::{Device, I2cDevice, Releasable, SpiDevice};
+pub use device::Releasable;
+pub use device::{Device, I2cDevice, SpiDevice};
 
 /// Suported MPUx devices
 pub enum MpuXDevice {

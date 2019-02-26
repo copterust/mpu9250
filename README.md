@@ -51,6 +51,14 @@ println!("{:?}", all);
 Number of examples can be found in [proving-ground](https://github.com/copterust/proving-ground) repo.
 Examples include: reading temperature, calibrating magnetrometer, reading all sensors.
 
+## Experimental I2C support
+
+Expiremntal I2C support is enabled via `i2c` feature flag. When enabled, SPI support will be deactivated
+and type of mpu9250 driver will change from `Mpu9250<SpiDevice<SPI, NCS>, MODE>` will change to
+`Mpu9250<I2cDevice<I2C>, MODE>`.
+
+NOTE: I2C support is not properly tested yet.
+
 ## Documentation
 
 API Docs available on [docs.rs](https://docs.rs/mpu9250).
