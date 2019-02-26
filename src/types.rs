@@ -1,4 +1,3 @@
-
 /// Marker trait for mode
 pub(crate) trait MpuMode {}
 /// Accelerometer + Gyroscope + Temperature Sensor

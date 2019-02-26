@@ -17,17 +17,16 @@ extern crate mpu9250;
 use std::thread;
 use std::time::Duration;
 
-use mpu9250::Mpu9250;
 use hal::spidev::{self, SpidevOptions};
-use hal::{Delay, Pin, Spidev};
 use hal::sysfs_gpio::Direction;
+use hal::{Delay, Pin, Spidev};
+use mpu9250::Mpu9250;
 
 fn main() {
     let mut spi = Spidev::open("/dev/spidev0.0").unwrap();
-    let options = SpidevOptions::new()
-        .max_speed_hz(1_000_000)
-        .mode(spidev::SPI_MODE_3)
-        .build();
+    let options = SpidevOptions::new().max_speed_hz(1_000_000)
+                                      .mode(spidev::SPI_MODE_3)
+                                      .build();
     spi.configure(&options).unwrap();
 
     let ncs = Pin::new(25);
@@ -36,7 +35,7 @@ fn main() {
     ncs.set_direction(Direction::Out).unwrap();
     ncs.set_value(1).unwrap();
 
-    let mut mpu9250 = Mpu9250::marg(spi, ncs, &mut Delay).unwrap();
+    let mut mpu9250 = Mpu9250::marg_default(spi, ncs, &mut Delay).unwrap();
 
     let who_am_i = mpu9250.who_am_i().unwrap();
     let ak8963_who_am_i = mpu9250.ak8963_who_am_i().unwrap();
