@@ -49,6 +49,7 @@ pub trait Device: Releasable {
     {
         let r = self.read(reg)?;
         self.write(reg, f(r))?;
+
         Ok(())
     }
 }
@@ -108,6 +109,12 @@ impl<SPI, NCS, E> Device for SpiDevice<SPI, NCS>
         Ok(buffer)
     }
 
+    // XXX: It seems that without inline(never), when compiling
+    //      with opt-level:3, ncs is out of sync with transfer.
+    //      This should be probably solved in HAL or HAL impl,
+    //      as device drivers should not know about such
+    //      minutiæ details.
+    #[inline(never)]
     fn write(&mut self, reg: Register, val: u8) -> Result<(), E> {
         self.ncs.set_low();
         self.spi.write(&[reg.write_address(), val])?;
