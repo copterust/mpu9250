@@ -27,17 +27,18 @@ fn main() -> io::Result<()> {
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    writeln!(&mut stdout, "   Accel XYZ(m/s^2)  |   Gyro XYZ (rad/s)  |")?;
+    writeln!(&mut stdout, "   Accel XYZ(m/s^2)  |   Gyro XYZ (rad/s)  | Temp (C)")?;
     loop {
         let all = mpu9250.all().expect("unable to read from MPU!");
         write!(&mut stdout,
-               "\r{:>6.2} {:>6.2} {:>6.2} |{:>6.1} {:>6.1} {:>6.1} |",
+               "\r{:>6.2} {:>6.2} {:>6.2} |{:>6.1} {:>6.1} {:>6.1} | {:>4.1} ",
                all.accel[0],
                all.accel[1],
                all.accel[2],
                all.gyro[0],
                all.gyro[1],
-               all.gyro[2])?;
+               all.gyro[2],
+               all.temp)?;
         stdout.flush()?;
         thread::sleep(Duration::from_micros(100000));
     }
