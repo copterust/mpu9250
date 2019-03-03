@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [v0.9.2] - 2019-02-26
+
+### Changed
+
+- Only IMU (6-axis) driver is available via I2c.
+
 ## [v0.9.0] - 2019-02-26
 
 ### Added
