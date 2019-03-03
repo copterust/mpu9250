@@ -272,35 +272,43 @@ mod i2c_defs {
         }
     }
 
-    impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
-        where I2C: i2c::Read<Error = E>
-                  + i2c::Write<Error = E>
-                  + i2c::WriteRead<Error = E>
-    {
-        /// Creates a new [`Marg`] driver from an I2C peripheral with
-        /// default [`Config`].
-        ///
-        /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn marg_default<D>(i2c: I2C,
-                               delay: &mut D)
-                               -> Result<Self, Error<E>>
-            where D: DelayMs<u8>
+    /// We need to generalize the AK8963 initialization (init_ak8963()) for both
+    /// SPI and I2C devices. See an example of I2C AK8963 bringup:
+    /// https://github.com/StrawsonDesign/librobotcontrol/blob/master/library/src/mpu/mpu.c#L592
+    /// 
+    /// Until something like that is in place, this code path is broken and unreachable.
+    mod broken {
+        use super::*;
+        impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
+            where I2C: i2c::Read<Error = E>
+                      + i2c::Write<Error = E>
+                      + i2c::WriteRead<Error = E>
         {
-            Mpu9250::marg(i2c, delay, &mut MpuConfig::marg())
-        }
+            /// Creates a new [`Marg`] driver from an I2C peripheral with
+            /// default [`Config`].
+            ///
+            /// [`Config`]: ./conf/struct.MpuConfig.html
+            pub fn marg_default<D>(i2c: I2C,
+                                   delay: &mut D)
+                                   -> Result<Self, Error<E>>
+                where D: DelayMs<u8>
+            {
+                Mpu9250::marg(i2c, delay, &mut MpuConfig::marg())
+            }
 
-        /// Creates a new MARG driver from an I2C peripheral
-        /// with provided configuration [`Config`].
-        ///
-        /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn marg<D>(i2c: I2C,
-                       delay: &mut D,
-                       config: &mut MpuConfig<Marg>)
-                       -> Result<Self, Error<E>>
-            where D: DelayMs<u8>
-        {
-            let dev = I2cDevice::new(i2c);
-            Self::new_marg(dev, delay, config)
+            /// Creates a new MARG driver from an I2C peripheral
+            /// with provided configuration [`Config`].
+            ///
+            /// [`Config`]: ./conf/struct.MpuConfig.html
+            pub fn marg<D>(i2c: I2C,
+                           delay: &mut D,
+                           config: &mut MpuConfig<Marg>)
+                           -> Result<Self, Error<E>>
+                where D: DelayMs<u8>
+            {
+                let dev = I2cDevice::new(i2c);
+                Self::new_marg(dev, delay, config)
+            }
         }
     }
 
