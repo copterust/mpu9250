@@ -55,9 +55,10 @@ Examples include: reading temperature, calibrating magnetrometer, reading all se
 
 Expiremntal I2C support is enabled via `i2c` feature flag. When enabled, SPI support will be deactivated
 and type of mpu9250 driver will change from `Mpu9250<SpiDevice<SPI, NCS>, MODE>` will change to
-`Mpu9250<I2cDevice<I2C>, MODE>`.
+`Mpu9250<I2cDevice<I2C>, Imu>`.
 
-NOTE: I2C support is not properly tested yet.
+The MPU9250 currently supports an IMU-only configuration. See the [BeagleBone Blue example](examples/bbblue.rs)
+for a demonstration. Support for the AK8963 is a WPI.
 
 ## Documentation
 
