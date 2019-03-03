@@ -50,7 +50,6 @@
 //! [4]: https://github.com/copterust/proving-ground
 
 #![deny(missing_docs)]
-#![allow(warnings)]
 #![no_std]
 
 #[macro_use]
@@ -66,7 +65,6 @@ mod device;
 mod types;
 
 use core::marker::PhantomData;
-use core::mem;
 
 use cast::{f32, i32, u16};
 use generic_array::typenum::consts::*;
@@ -75,9 +73,6 @@ use nalgebra::convert;
 pub use nalgebra::Vector3;
 
 use hal::blocking::delay::DelayMs;
-use hal::blocking::i2c;
-use hal::blocking::spi;
-use hal::digital::OutputPin;
 use hal::spi::{Mode, Phase, Polarity};
 
 pub use conf::*;
@@ -160,6 +155,8 @@ const TEMP_ROOM_OFFSET: f32 = 0.0;
 #[cfg(not(feature = "i2c"))]
 mod spi_defs {
     use super::*;
+    use hal::blocking::spi;
+    use hal::digital::OutputPin;
 
     // SPI device, 6DOF
     impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Imu>
@@ -245,6 +242,7 @@ pub use spi_defs::*;
 #[cfg(feature = "i2c")]
 mod i2c_defs {
     use super::*;
+    use hal::blocking::i2c;
 
     impl<E, I2C> Mpu9250<I2cDevice<I2C>, Imu>
         where I2C: i2c::Read<Error = E>
