@@ -275,8 +275,9 @@ mod i2c_defs {
     /// We need to generalize the AK8963 initialization (init_ak8963()) for both
     /// SPI and I2C devices. See an example of I2C AK8963 bringup:
     /// https://github.com/StrawsonDesign/librobotcontrol/blob/master/library/src/mpu/mpu.c#L592
-    /// 
-    /// Until something like that is in place, this code path is broken and unreachable.
+    ///
+    /// Until something like that is in place, this code path is broken and
+    /// unreachable.
     mod broken {
         use super::*;
         impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
@@ -674,6 +675,12 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         Ok(InterruptEnable::from_bits_truncate(bits))
     }
 
+    /// Get interrupt status
+    pub fn get_interrupt_status(&mut self) -> Result<InterruptEnable, E> {
+        let bits = self.dev.read(Register::INT_STATUS)?;
+        Ok(InterruptEnable::from_bits_truncate(bits))
+    }
+
     /// Enable specific interrupts
     pub fn enable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
         self.dev.modify(Register::INT_ENABLE, |r| r | ie.bits())
@@ -682,6 +689,17 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     /// Disable specific interrupts
     pub fn disable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
         self.dev.modify(Register::INT_ENABLE, |r| r & !ie.bits())
+    }
+
+    /// Get interrupt configurtion
+    pub fn get_interrupt_config(&mut self) -> Result<InterruptConfig, E> {
+        let bits = self.dev.read(Register::INT_PIN_CFG)?;
+        Ok(InterruptConfig::from_bits_truncate(bits))
+    }
+
+    /// *Overwrites* current interrupt configuration
+    pub fn interrupt_config(&mut self, ic: InterruptConfig) -> Result<(), E> {
+        self.dev.write(Register::INT_PIN_CFG, ic.bits())
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
@@ -1069,6 +1087,7 @@ pub enum Register {
     I2C_SLV4_REG = 0x32,
     INT_PIN_CFG = 0x37,
     INT_ENABLE = 0x38,
+    INT_STATUS = 0x3a,
     PWR_MGMT_1 = 0x6b,
     PWR_MGMT_2 = 0x6c,
     TEMP_OUT_H = 0x41,
