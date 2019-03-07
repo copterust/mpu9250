@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `imu_with_reinit` and `marg_with_reinit` consturctor for MPU9250 via SPI.
+   These functions allow supplying callback that will be called after initialization is done
+   to optionally reconfigure underlying bus, e.g. change speed.
+
 ## [v0.9.2] - 2019-02-26
 
 ### Changed
