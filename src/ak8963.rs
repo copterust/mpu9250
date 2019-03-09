@@ -1,5 +1,10 @@
 //! AK8963, I2C magnetometer
 
+use hal::blocking::delay::DelayMs;
+
+use generic_array::typenum::consts::*;
+use generic_array::GenericArray;
+
 // I2C slave address
 pub const I2C_ADDRESS: u8 = 0x0c;
 pub const R: u8 = 1 << 7;
@@ -32,4 +37,37 @@ impl Register {
     pub fn addr(&self) -> u8 {
         *self as u8
     }
+
+    pub fn read_address(&self) -> u8 {
+        self.addr() | R
+    }
+
+    pub fn write_address(&self) -> u8 {
+        self.addr() | W
+    }
+}
+
+/// Decribes a type that can communicate with the
+/// MPU's on-board magnetometer, the AK8963
+pub trait AK8963 {
+    /// Associated error type
+    type Error;
+
+    /// Initialize the AK8963
+    ///
+    /// It may not make sense to call this more than once. However, it is
+    /// absolutely necessary to call it at least once if you need the
+    /// magnetometer
+    fn init<D: DelayMs<u8>>(&mut self,
+                            delay: &mut D)
+                            -> Result<(), Self::Error>;
+
+    /// Read a magnetometer's register
+    fn read(&mut self, reg: Register) -> Result<u8, Self::Error>;
+
+    /// Write to a magnetometer's register
+    fn write(&mut self, reg: Register, value: u8) -> Result<(), Self::Error>;
+
+    /// Read the magnetometer's X,Y,Z triplet
+    fn read_xyz(&mut self) -> Result<GenericArray<u8, U7>, Self::Error>;
 }
