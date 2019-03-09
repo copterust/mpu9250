@@ -146,6 +146,21 @@ impl<SPI, NCS, E> AK8963 for SpiDevice<SPI, NCS>
         Ok(())
     }
 
+    fn finalize<D: DelayMs<u8>>(&mut self, delay: &mut D) -> Result<(), Self::Error> {
+        // set aux I2C frequency to 400 KHz (should be configurable?)
+        Device::write(self, Register::I2C_MST_CTRL, 0x0d)?;
+
+        delay.delay_ms(10);
+
+        // configure sampling of magnetometer
+        Device::write(self, Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
+        Device::write(self, Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
+        Device::write(self, Register::I2C_SLV0_CTRL, 0x87)?;
+
+        delay.delay_ms(10);
+        Ok(())
+    }
+
     fn read(&mut self, reg: ak8963::Register) -> Result<u8, Self::Error> {
         Device::write(self,
                       Register::I2C_SLV4_ADDR,

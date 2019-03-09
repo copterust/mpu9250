@@ -570,15 +570,7 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
         self._mag_scale()?;
         delay.delay_ms(10);
         
-        // // set aux I2C frequency to 400 KHz (should be configurable?)
-        // Device::write(&mut self.dev, Register::I2C_MST_CTRL, 0x0d)?;
-
-        // delay.delay_ms(10);
-
-        // // configure sampling of magnetometer
-        // Device::write(&mut self.dev, Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
-        // Device::write(&mut self.dev, Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
-        // Device::write(&mut self.dev, Register::I2C_SLV0_CTRL, 0x87)?;
+        AK8963::finalize(&mut self.dev, delay)?;
 
         Ok(())
     }
