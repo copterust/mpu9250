@@ -37,14 +37,6 @@ impl Register {
     pub fn addr(&self) -> u8 {
         *self as u8
     }
-
-    pub fn read_address(&self) -> u8 {
-        self.addr() | R
-    }
-
-    pub fn write_address(&self) -> u8 {
-        self.addr() | W
-    }
 }
 
 /// Decribes a type that can communicate with the

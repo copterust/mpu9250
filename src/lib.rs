@@ -547,18 +547,14 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
     fn init_ak8963<D>(&mut self, delay: &mut D) -> Result<(), E>
         where D: DelayMs<u8>
     {
-        log::trace!("Initializing AK8963...");
         AK8963::init(&mut self.dev, delay)?;
         delay.delay_ms(10);
         // First extract the factory calibration for each magnetometer axis
-        log::trace!("Powering down AK8963...");
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
         
-        log::trace!("Entering FUSE mode...");
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x0F)?;
         delay.delay_ms(20);
-        log::trace!("Reading calibration values...");
         let mag_x_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAX)?;
         let mag_y_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAY)?;
         let mag_z_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAZ)?;
@@ -568,7 +564,6 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
         self.mag_sensitivity_adjustments =
             self.raw_mag_sensitivity_adjustments
                 .map(|d| f32(d - 128) / 256. + 1.);
-        log::trace!("Magnetometer sensitivity adjustments = {:?}", self.mag_sensitivity_adjustments);
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
         // Set magnetometer data resolution and sample ODR
@@ -585,7 +580,6 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
         // Device::write(&mut self.dev, Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
         // Device::write(&mut self.dev, Register::I2C_SLV0_CTRL, 0x87)?;
 
-        log::trace!("Completed AK8963 initialization");
         Ok(())
     }
 

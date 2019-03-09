@@ -252,11 +252,9 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
     fn init<D: DelayMs<u8>>(&mut self,
                             delay: &mut D)
                             -> Result<(), Self::Error> {
-        log::trace!("Zeroing USER_CTRL...");
         Device::write(self, Register::USER_CTRL, 0)?;
         delay.delay_ms(10);
 
-        log::trace!("Setting I2C bypass...");
         const LATCH_INT_EN: u8 = 1 << 5;
         const INT_ANYRD_CLEAR: u8 = 1 << 4;
         const ACTL_ACTIVE_LOW: u8 = 1 << 7;

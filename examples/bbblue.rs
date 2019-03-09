@@ -15,7 +15,6 @@ use hal::I2cdev;
 use mpu9250::Mpu9250;
 
 fn main() -> io::Result<()> {
-    env_logger::init();
     let i2c = I2cdev::new("/dev/i2c-2").expect("unable to open /dev/i2c-2");
 
     let mut mpu9250 =
