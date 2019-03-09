@@ -303,15 +303,18 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
 
     fn read_xyz(&mut self) -> Result<GenericArray<u8, U7>, Self::Error> {
         let mut buffer: GenericArray<u8, U7> = unsafe { mem::zeroed() };
-        {
-            let slice: &mut [u8] = &mut buffer;
-            self.i2c.write_read(ak8963::I2C_ADDRESS,
-                                 &[ak8963::Register::XOUT_L.addr()],
-                                 &mut slice[1..])?;
-        }
-        // Required to read ST2 after axes, otherwise
-        // we stop sampling
-        AK8963::read(self, ak8963::Register::ST2)?;
+
+        // We need to leave the zeroth byte as a zero to conform with the 
+        // SPI device behaviors. We also want to read past the data bytes
+        // to read register ST2. We're required to read ST2 after each
+        // reading, otherwise the magnetometer blocks sampling. We can
+        // achieve this in one I2C transaction
+        self.i2c.write_read(ak8963::I2C_ADDRESS,
+                                &[ak8963::Register::XOUT_L.addr()],
+                                &mut buffer)?;
+        
+        buffer[..].rotate_right(1);
+        buffer[0] = 0; // Zero out ST2 afer rotation
         Ok(buffer)
     }
 }
