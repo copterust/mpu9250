@@ -213,7 +213,6 @@ mod spi_defs {
             where D: DelayMs<u8>,
                   F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
         {
-            let f = None::<fn(SPI, NCS) -> Option<(SPI, NCS)>>;
             let dev = SpiDevice::new(spi, ncs);
             let mpu = Self::new_imu(dev, delay, config)?;
             mpu.reinit_spi_device(reinit_fn)
@@ -335,6 +334,25 @@ mod i2c_defs {
             let dev = I2cDevice::new(i2c);
             Mpu9250::new_imu(dev, delay, config)
         }
+
+        /// Creates a new IMU driver from an I2C peripheral
+        /// with provided configuration [`Config`]. Reinit function can be used
+        /// to re-initialize I2C bus. Usecase: change I2C speed for
+        /// faster data transfer.
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn imu_with_reinit<D, F>(i2c: I2C,
+                                      delay: &mut D,
+                                      config: &mut MpuConfig<Imu>,
+                                      reinit_fn: F)
+                                      -> Result<Self, Error<E>>
+            where D: DelayMs<u8>,
+                  F: FnOnce(I2C) -> Option<I2C>
+        {
+            let dev = I2cDevice::new(i2c);
+            let mpu = Self::new_imu(dev, delay, config)?;
+            mpu.reinit_i2c_device(reinit_fn)
+        }
     }
 
     impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
@@ -367,6 +385,25 @@ mod i2c_defs {
             let dev = I2cDevice::new(i2c);
             Self::new_marg(dev, delay, config)
         }
+
+        /// Creates a new MARG driver from an I2C peripheral
+        /// with provided configuration [`Config`]. Reinit function can be used
+        /// to re-initialize I2C bus. Usecase: change I2C speed for
+        /// faster data transfer.
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg_with_reinit<D, F>(i2c: I2C,
+                                      delay: &mut D,
+                                      config: &mut MpuConfig<Marg>,
+                                      reinit_fn: F)
+                                      -> Result<Self, Error<E>>
+            where D: DelayMs<u8>,
+                  F: FnOnce(I2C) -> Option<I2C>
+        {
+            let dev = I2cDevice::new(i2c);
+            let mpu = Self::new_marg(dev, delay, config)?;
+            mpu.reinit_i2c_device(reinit_fn)
+        }
     }
 
     // I2C device, any mode
@@ -378,6 +415,17 @@ mod i2c_defs {
         /// Destroys the driver, recovering the I2C peripheral
         pub fn release(self) -> I2C {
             self.dev.release()
+        }
+
+        fn reinit_i2c_device<F>(self, reinit_fn: F) -> Result<Self, Error<E>>
+            where F: FnOnce(I2C) -> Option<I2C>
+        {
+            self.reset_device(|i2cdev| {
+                    let i2c = i2cdev.release();
+                    reinit_fn(i2c).map(|i2c| {
+                                             I2cDevice::new(i2c)
+                                         })
+                })
         }
     }
 }
