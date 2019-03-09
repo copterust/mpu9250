@@ -135,6 +135,9 @@ pub enum Error<E> {
     BusError(E),
     /// Calibration error (not enough data gathered)
     CalibrationError,
+    /// Reinitialization error (user provided function was unable to re-init
+    /// device)
+    ReInitError,
 }
 
 impl<E> core::convert::From<E> for Error<E> {
@@ -173,7 +176,7 @@ mod spi_defs {
                               -> Result<Self, Error<E>>
             where D: DelayMs<u8>
         {
-            Mpu9250::imu(spi, ncs, delay, &mut MpuConfig::imu())
+            Self::imu(spi, ncs, delay, &mut MpuConfig::imu())
         }
 
         /// Creates a new Imu driver from a SPI peripheral and a NCS pin with
@@ -188,7 +191,32 @@ mod spi_defs {
             where D: DelayMs<u8>
         {
             let dev = SpiDevice::new(spi, ncs);
-            Mpu9250::new_imu(dev, delay, config)
+            Self::new_imu(dev, delay, config)
+        }
+
+        /// Creates a new Imu driver from a SPI peripheral and a NCS pin with
+        /// provided configuration [`Config`]. Reinit function can be used to
+        /// re-initialize SPI bus. Usecase: change SPI speed for faster data
+        /// transfer:
+        /// "Communication with all registers of the device is
+        ///    performed using either I2C at 400kHz or SPI at 1M Hz.
+        ///    For applications requiring faster communications, the sensor and
+        ///    interrupt registers may be read using SPI at 20MHz."
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn imu_with_reinit<D, F>(spi: SPI,
+                                     ncs: NCS,
+                                     delay: &mut D,
+                                     config: &mut MpuConfig<Imu>,
+                                     reinit_fn: F)
+                                     -> Result<Self, Error<E>>
+            where D: DelayMs<u8>,
+                  F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
+        {
+            let f = None::<fn(SPI, NCS) -> Option<(SPI, NCS)>>;
+            let dev = SpiDevice::new(spi, ncs);
+            let mpu = Self::new_imu(dev, delay, config)?;
+            mpu.reinit_spi_device(reinit_fn)
         }
     }
 
@@ -224,6 +252,30 @@ mod spi_defs {
             let dev = SpiDevice::new(spi, ncs);
             Self::new_marg(dev, delay, config)
         }
+
+        /// Creates a new MARG driver from a SPI peripheral and a NCS pin
+        /// with provided configuration [`Config`]. Reinit function can be used
+        /// to re-initialize SPI bus. Usecase: change SPI speed for
+        /// faster data transfer:
+        /// "Communication with all registers of the device is
+        ///    performed using either I2C at 400kHz or SPI at 1M Hz.
+        ///    For applications requiring faster communications, the sensor and
+        ///    interrupt registers may be read using SPI at 20MHz."
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg_with_reinit<D, F>(spi: SPI,
+                                      ncs: NCS,
+                                      delay: &mut D,
+                                      config: &mut MpuConfig<Marg>,
+                                      reinit_fn: F)
+                                      -> Result<Self, Error<E>>
+            where D: DelayMs<u8>,
+                  F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
+        {
+            let dev = SpiDevice::new(spi, ncs);
+            let mpu = Self::new_marg(dev, delay, config)?;
+            mpu.reinit_spi_device(reinit_fn)
+        }
     }
 
     // SPI device, any mode
@@ -234,6 +286,17 @@ mod spi_defs {
         /// Destroys the driver recovering the SPI peripheral and the NCS pin
         pub fn release(self) -> (SPI, NCS) {
             self.dev.release()
+        }
+
+        fn reinit_spi_device<F>(self, reinit_fn: F) -> Result<Self, Error<E>>
+            where F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
+        {
+            self.reset_device(|spidev| {
+                    let (cspi, cncs) = spidev.release();
+                    reinit_fn(cspi, cncs).map(|(nspi, nncs)| {
+                                             SpiDevice::new(nspi, nncs)
+                                         })
+                })
         }
     }
 }
@@ -631,6 +694,35 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         Ok(())
     }
 
+    fn reset_device<F>(self, f: F) -> Result<Self, Error<E>>
+        where F: FnOnce(DEV) -> Option<DEV>
+    {
+        let raw_mag_sensitivity_adjustments =
+            self.raw_mag_sensitivity_adjustments;
+        let mag_sensitivity_adjustments = self.mag_sensitivity_adjustments;
+        let gyro_scale = self.gyro_scale;
+        let accel_scale = self.accel_scale;
+        let mag_scale = self.mag_scale;
+        let accel_data_rate = self.accel_data_rate;
+        let gyro_temp_data_rate = self.gyro_temp_data_rate;
+        let sample_rate_divisor = self.sample_rate_divisor;
+        let _mode = self._mode;
+        if let Some(new_dev) = f(self.dev) {
+            Ok(Mpu9250 { dev: new_dev,
+                         raw_mag_sensitivity_adjustments,
+                         mag_sensitivity_adjustments,
+                         gyro_scale,
+                         accel_scale,
+                         mag_scale,
+                         accel_data_rate,
+                         gyro_temp_data_rate,
+                         sample_rate_divisor,
+                         _mode })
+        } else {
+            Err(Error::ReInitError)
+        }
+    }
+
     fn scale_accel<N>(&self,
                       buffer: GenericArray<u8, N>,
                       offset: usize)
@@ -670,6 +762,12 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         Ok(InterruptEnable::from_bits_truncate(bits))
     }
 
+    /// Get interrupt status
+    pub fn get_interrupt_status(&mut self) -> Result<InterruptEnable, E> {
+        let bits = self.dev.read(Register::INT_STATUS)?;
+        Ok(InterruptEnable::from_bits_truncate(bits))
+    }
+
     /// Enable specific interrupts
     pub fn enable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
         self.dev.modify(Register::INT_ENABLE, |r| r | ie.bits())
@@ -678,6 +776,17 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     /// Disable specific interrupts
     pub fn disable_interrupts(&mut self, ie: InterruptEnable) -> Result<(), E> {
         self.dev.modify(Register::INT_ENABLE, |r| r & !ie.bits())
+    }
+
+    /// Get interrupt configurtion
+    pub fn get_interrupt_config(&mut self) -> Result<InterruptConfig, E> {
+        let bits = self.dev.read(Register::INT_PIN_CFG)?;
+        Ok(InterruptConfig::from_bits_truncate(bits))
+    }
+
+    /// *Overwrites* current interrupt configuration
+    pub fn interrupt_config(&mut self, ic: InterruptConfig) -> Result<(), E> {
+        self.dev.write(Register::INT_PIN_CFG, ic.bits())
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
@@ -1033,6 +1142,7 @@ pub enum Register {
     I2C_SLV4_REG = 0x32,
     INT_PIN_CFG = 0x37,
     INT_ENABLE = 0x38,
+    INT_STATUS = 0x3a,
     PWR_MGMT_1 = 0x6b,
     PWR_MGMT_2 = 0x6c,
     TEMP_OUT_H = 0x41,

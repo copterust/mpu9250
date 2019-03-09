@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## [v0.9.4]
+
+### Added
+
+- `imu_with_reinit` and `marg_with_reinit` consturctor for MPU9250 via SPI.
+   These functions allow supplying callback that will be called after initialization is done
+   to optionally reconfigure underlying bus, e.g. change speed.
+
+## [v0.9.3]
+
+### Added
+
+- `INT_PIN_CFG` and `INT_STATUS` related routines
+
+## [v0.9.2] - 2019-02-26
+
+### Changed
+
+- Only IMU (6-axis) driver is available via I2c.
 
 ## [v0.9.0] - 2019-02-26
 

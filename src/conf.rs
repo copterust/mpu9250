@@ -317,7 +317,6 @@ impl MpuConfig<types::Marg> {
     }
 }
 
-// #[derive(Copy, Clone, Debug)]
 bitflags! {
     /// Enable interrupt for:
     #[allow(non_camel_case_types)]
@@ -333,18 +332,31 @@ bitflags! {
     }
 }
 
-/*
-/// Interrupt configuration
-/// Defaults:
-/// active high, push-pull, 50 us pulse, cleared only by reading INT_STATUS
-pub struct InterrupConfig {
-    /// If set the logic level for INT pin is active low
-    active_low: bool,
-    /// If set INT pin is configured as open drain or push-pull otherwise
-    open_drain: bool,
-    /// If set pin level held until interrupt status is cleared, or for 50 us
-    latch: bool,
-    /// If set interrupt is cleared if any read operation is performed
-    clear_on_any_read: bool,
+bitflags! {
+    /// Interrupt configuration
+    /// Defaults:
+    /// active high, push-pull, 50 us pulse, cleared only by reading INT_STATUS
+    #[allow(non_camel_case_types)]
+    pub struct InterruptConfig: u8 {
+        /// Sets logic level for INT pin is active low (high if not set)
+        const ACL = 0b1000_0000;
+        /// INT pin is configured as open drain (push pull if not set)
+        const OPEN = 0b0100_0000;
+        /// INT pin level held untilinterrupt status is cleared (cleared within 50us if not set)
+        const LATCH_INT_EN = 0b0010_0000;
+        /// Interrupt status is cleared if any read operation is performed (cleared only by reading INT_STATUS if not set)
+        const INT_ANYRD_CLEAR = 0b0001_0000;
+        /// The logic level for the FSYNC pin as an interrupt is active low (active high if not set)
+        const ACTL_FSYNC = 0b0000_1000;
+        /// This enables the FSYNC pin to be used as an interrupt.
+        /// A transition to the active level described by the ACTL_FSYNC bit
+        /// will cause an interrupt.  The status of the interrupt is read in
+        /// the I2C Master Status register PASS_THROUGH bit (disabled if not set)
+        const FSYNC_INT_MODE_EN = 0b0000_0100;
+        /// When asserted, the i2c_master interface pins(ES_CL and ES_DA) will
+        /// go into ‘bypass mode’ when the i2c master interface is disabled.
+        /// The pins will float high due to the internal pull-up if not enabled
+        /// and the i2c master interface is disabled
+        const BYPASS_EN = 0b0000_0010;
+    }
 }
-*/
