@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v0.9.5]
+
+### Fixed
+
+- `calibrate_at_rest` now correctly re-initializes on-board magnetrometer when Marg is used.
+
 ## [v0.9.4]
 
 ### Added
