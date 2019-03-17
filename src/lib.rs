@@ -211,7 +211,6 @@ mod spi_defs {
             where D: DelayMs<u8>,
                   F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
         {
-            let f = None::<fn(SPI, NCS) -> Option<(SPI, NCS)>>;
             let dev = SpiDevice::new(spi, ncs);
             let mpu = Self::new_imu(dev, delay, config)?;
             mpu.reinit_spi_device(reinit_fn)
@@ -464,6 +463,24 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
                              gyro,
                              temp })
     }
+
+    /// Calculates the average of the at-rest readings of accelerometer and
+    /// gyroscope and then loads the resulting biases into gyro
+    /// offset registers. Retunrs either Ok with accelerometer biases, or
+    /// Err(Error), where Error::CalibrationError means soft error, and user
+    /// can proceed on their own risk.
+    ///
+    /// Accelerometer biases should be processed separately.
+    ///
+    /// NOTE: MPU is able to store accelerometer biases, to apply them
+    ///       automatically, but at this moment it does not work.
+    pub fn calibrate_at_rest<D>(&mut self,
+                                delay: &mut D)
+                                -> Result<Vector3<f32>, Error<E>>
+        where D: DelayMs<u8>
+    {
+        self._calibrate_at_rest(delay)
+    }
 }
 
 // Any device, 9DOF
@@ -501,6 +518,26 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
         } else {
             Err(Error::InvalidDevice(wai))
         }
+    }
+
+    /// Calculates the average of the at-rest readings of accelerometer and
+    /// gyroscope and then loads the resulting biases into gyro
+    /// offset registers. Retunrs either Ok with accelerometer biases, or
+    /// Err(Error), where Error::CalibrationError means soft error, and user
+    /// can proceed on their own risk.
+    ///
+    /// Accelerometer biases should be processed separately.
+    ///
+    /// NOTE: MPU is able to store accelerometer biases, to apply them
+    ///       automatically, but at this moment it does not work.
+    pub fn calibrate_at_rest<D>(&mut self,
+                                delay: &mut D)
+                                -> Result<Vector3<f32>, Error<E>>
+        where D: DelayMs<u8>
+    {
+        let accel_biases = self._calibrate_at_rest(delay)?;
+        self.init_ak8963(delay)?;
+        Ok(accel_biases)
     }
 
     fn init_ak8963<D>(&mut self, delay: &mut D) -> Result<(), E>
@@ -929,16 +966,9 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         Ok(())
     }
 
-    /// Calculates the average of the at-rest readings of accelerometer and
-    /// gyroscope and then loads the resulting biases into gyro
-    /// offset registers. Retunrs either Ok with accelerometer biases, or
-    /// Err(Error), where Error::CalibrationError means soft error, and user
-    /// can proceed on their own risk.
-    /// NOTE: MPU has register to store accelerometer biases, but there are
-    ///       some complications, so setting them doesn't work.
-    pub fn calibrate_at_rest<D>(&mut self,
-                                delay: &mut D)
-                                -> Result<Vector3<f32>, Error<E>>
+    fn _calibrate_at_rest<D>(&mut self,
+                             delay: &mut D)
+                             -> Result<Vector3<f32>, Error<E>>
         where D: DelayMs<u8>
     {
         // First save current values, as we reset them below
