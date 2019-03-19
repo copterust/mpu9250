@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v0.10.0]
+
+### Added
+
+- Enable I2C Bypass for AK8963 communications: `Marg` is now available for `I2c` connected MPUs.
+
+
 ## [v0.9.5]
 
 ### Fixed
@@ -52,5 +59,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - First published version.
 
 
-[Unreleased]: https://github.com/rust-embedded/cortex-m/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/rust-embedded/cortex-m/compare/v0.10.0...HEAD
+[v0.10.0]: https://github.com/copterust/mpu9250/compare/v0.9.5...v0.10.0
+[v0.9.5]: https://github.com/copterust/mpu9250/compare/v0.9.4...v0.9.5
+[v0.9.4]: https://github.com/copterust/mpu9250/compare/v0.9.3...v0.9.4
+[v0.9.3]: https://github.com/copterust/mpu9250/compare/v0.9.2...v0.9.3
+[v0.9.2]: https://github.com/copterust/mpu9250/compare/v0.9.0...v0.9.2
+[v0.9.0]: https://github.com/copterust/mpu9250/compare/v0.8.0...v0.9.0
 [v0.8.0]: https://github.com/copterust/mpu9250/compare/v0.2.2...v0.8.0
