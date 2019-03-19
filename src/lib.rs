@@ -64,6 +64,8 @@ mod conf;
 mod device;
 mod types;
 
+use ak8963::AK8963;
+
 use core::marker::PhantomData;
 
 use cast::{f32, i32, u16};
@@ -332,46 +334,75 @@ mod i2c_defs {
             let dev = I2cDevice::new(i2c);
             Mpu9250::new_imu(dev, delay, config)
         }
+
+        /// Creates a new IMU driver from an I2C peripheral
+        /// with provided configuration [`Config`]. Reinit function can be used
+        /// to re-initialize I2C bus. Usecase: change I2C speed for
+        /// faster data transfer.
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn imu_with_reinit<D, F>(i2c: I2C,
+                                      delay: &mut D,
+                                      config: &mut MpuConfig<Imu>,
+                                      reinit_fn: F)
+                                      -> Result<Self, Error<E>>
+            where D: DelayMs<u8>,
+                  F: FnOnce(I2C) -> Option<I2C>
+        {
+            let dev = I2cDevice::new(i2c);
+            let mpu = Self::new_imu(dev, delay, config)?;
+            mpu.reinit_i2c_device(reinit_fn)
+        }
     }
 
-    /// We need to generalize the AK8963 initialization (init_ak8963()) for both
-    /// SPI and I2C devices. See an example of I2C AK8963 bringup:
-    /// https://github.com/StrawsonDesign/librobotcontrol/blob/master/library/src/mpu/mpu.c#L592
-    ///
-    /// Until something like that is in place, this code path is broken and
-    /// unreachable.
-    mod broken {
-        use super::*;
-        impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
-            where I2C: i2c::Read<Error = E>
-                      + i2c::Write<Error = E>
-                      + i2c::WriteRead<Error = E>
+    impl<E, I2C> Mpu9250<I2cDevice<I2C>, Marg>
+        where I2C: i2c::Read<Error = E>
+                  + i2c::Write<Error = E>
+                  + i2c::WriteRead<Error = E>
+    {
+        /// Creates a new [`Marg`] driver from an I2C peripheral with
+        /// default [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg_default<D>(i2c: I2C,
+                               delay: &mut D)
+                               -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
         {
-            /// Creates a new [`Marg`] driver from an I2C peripheral with
-            /// default [`Config`].
-            ///
-            /// [`Config`]: ./conf/struct.MpuConfig.html
-            pub fn marg_default<D>(i2c: I2C,
-                                   delay: &mut D)
-                                   -> Result<Self, Error<E>>
-                where D: DelayMs<u8>
-            {
-                Mpu9250::marg(i2c, delay, &mut MpuConfig::marg())
-            }
+            Mpu9250::marg(i2c, delay, &mut MpuConfig::marg())
+        }
 
-            /// Creates a new MARG driver from an I2C peripheral
-            /// with provided configuration [`Config`].
-            ///
-            /// [`Config`]: ./conf/struct.MpuConfig.html
-            pub fn marg<D>(i2c: I2C,
-                           delay: &mut D,
-                           config: &mut MpuConfig<Marg>)
-                           -> Result<Self, Error<E>>
-                where D: DelayMs<u8>
-            {
-                let dev = I2cDevice::new(i2c);
-                Self::new_marg(dev, delay, config)
-            }
+        /// Creates a new MARG driver from an I2C peripheral
+        /// with provided configuration [`Config`].
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg<D>(i2c: I2C,
+                       delay: &mut D,
+                       config: &mut MpuConfig<Marg>)
+                       -> Result<Self, Error<E>>
+            where D: DelayMs<u8>
+        {
+            let dev = I2cDevice::new(i2c);
+            Self::new_marg(dev, delay, config)
+        }
+
+        /// Creates a new MARG driver from an I2C peripheral
+        /// with provided configuration [`Config`]. Reinit function can be used
+        /// to re-initialize I2C bus. Usecase: change I2C speed for
+        /// faster data transfer.
+        ///
+        /// [`Config`]: ./conf/struct.MpuConfig.html
+        pub fn marg_with_reinit<D, F>(i2c: I2C,
+                                      delay: &mut D,
+                                      config: &mut MpuConfig<Marg>,
+                                      reinit_fn: F)
+                                      -> Result<Self, Error<E>>
+            where D: DelayMs<u8>,
+                  F: FnOnce(I2C) -> Option<I2C>
+        {
+            let dev = I2cDevice::new(i2c);
+            let mpu = Self::new_marg(dev, delay, config)?;
+            mpu.reinit_i2c_device(reinit_fn)
         }
     }
 
@@ -384,6 +415,17 @@ mod i2c_defs {
         /// Destroys the driver, recovering the I2C peripheral
         pub fn release(self) -> I2C {
             self.dev.release()
+        }
+
+        fn reinit_i2c_device<F>(self, reinit_fn: F) -> Result<Self, Error<E>>
+            where F: FnOnce(I2C) -> Option<I2C>
+        {
+            self.reset_device(|i2cdev| {
+                    let i2c = i2cdev.release();
+                    reinit_fn(i2c).map(|i2c| {
+                                             I2cDevice::new(i2c)
+                                         })
+                })
         }
     }
 }
@@ -484,7 +526,7 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
 }
 
 // Any device, 9DOF
-impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
+impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
 {
     // Private constructor that creates a MARG-based MPU with
     // the specificed device.
@@ -543,47 +585,31 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
     fn init_ak8963<D>(&mut self, delay: &mut D) -> Result<(), E>
         where D: DelayMs<u8>
     {
-        // isolate the auxiliary master I2C bus (AUX_CL, AUX_DA)
-        // disable the slave I2C bus, make serial interface SPI only
-        // reset the master I2C bus
-        self.dev.write(Register::USER_CTRL, 0x32)?;
-
+        AK8963::init(&mut self.dev, delay)?;
+        delay.delay_ms(10);
         // First extract the factory calibration for each magnetometer axis
-        // Power down magnetometer
-        self.ak8963_write(ak8963::Register::CNTL, 0x00)?;
+        AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
-        // Enter Fuse ROM access mode
-        self.ak8963_write(ak8963::Register::CNTL, 0x0F)?;
-        delay.delay_ms(10);
-        // Read the x-, y-, and z-axis calibration values
-        let mag_x_bias = self.ak8963_read(ak8963::Register::ASAX)?;
-        let mag_y_bias = self.ak8963_read(ak8963::Register::ASAY)?;
-        let mag_z_bias = self.ak8963_read(ak8963::Register::ASAZ)?;
+        
+        AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x0F)?;
+        delay.delay_ms(20);
+        let mag_x_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAX)?;
+        let mag_y_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAY)?;
+        let mag_z_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAZ)?;
         // Return x-axis sensitivity adjustment values, etc.
         self.raw_mag_sensitivity_adjustments =
             Vector3::new(mag_x_bias, mag_y_bias, mag_z_bias);
         self.mag_sensitivity_adjustments =
             self.raw_mag_sensitivity_adjustments
                 .map(|d| f32(d - 128) / 256. + 1.);
-        self.ak8963_write(ak8963::Register::CNTL, 0x00)?;
+        AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
         // Set magnetometer data resolution and sample ODR
         self._mag_scale()?;
         delay.delay_ms(10);
+        
+        AK8963::finalize(&mut self.dev, delay)?;
 
-        // set aux I2C frequency to 400 KHz (should be configurable?)
-        self.dev.write(Register::I2C_MST_CTRL, 0x0d)?;
-
-        delay.delay_ms(10);
-
-        // configure sampling of magnetometer
-        self.dev
-            .write(Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
-        self.dev
-            .write(Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
-        self.dev.write(Register::I2C_SLV0_CTRL, 0x87)?;
-
-        delay.delay_ms(10);
         Ok(())
     }
 
@@ -604,12 +630,13 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// + Magnetometer measurements (LSB).
     pub fn unscaled_all(&mut self) -> Result<UnscaledMargMeasurements, E> {
-        let buffer = self.dev.read_many::<U21>(Register::ACCEL_XOUT_H)?;
+        let atg_buffer = Device::read_many::<U15>(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let mag_buffer = AK8963::read_xyz(&mut self.dev)?;
 
-        let accel = self.to_vector(buffer, 0);
-        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
-        let gyro = self.to_vector(buffer, 8);
-        let mag = self.to_vector_inverted(buffer, 14);
+        let accel = self.to_vector(atg_buffer, 0);
+        let temp = ((u16(atg_buffer[7]) << 8) | u16(atg_buffer[8])) as i16;
+        let gyro = self.to_vector(atg_buffer, 8);
+        let mag = self.to_vector_inverted(mag_buffer, 0);
 
         Ok(UnscaledMargMeasurements { accel,
                                       gyro,
@@ -620,12 +647,13 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
     /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
     /// measurements scaled and converted to respective units.
     pub fn all(&mut self) -> Result<MargMeasurements, E> {
-        let buffer = self.dev.read_many::<U21>(Register::ACCEL_XOUT_H)?;
+        let atg_buffer = Device::read_many::<U15>(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let mag_buffer = AK8963::read_xyz(&mut self.dev)?;
 
-        let accel = self.scale_accel(buffer, 0);
-        let temp = self.scale_temp(buffer, 6);
-        let gyro = self.scale_gyro(buffer, 8);
-        let mag = self.scale_and_correct_mag(buffer, 14);
+        let accel = self.scale_accel(atg_buffer, 0);
+        let temp = self.scale_temp(atg_buffer, 6);
+        let gyro = self.scale_gyro(atg_buffer, 8);
+        let mag = self.scale_and_correct_mag(mag_buffer, 0);
 
         Ok(MargMeasurements { accel,
                               gyro,
@@ -649,14 +677,14 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
 
     /// Reads and returns raw unscaled Magnetometer measurements (LSB).
     pub fn unscaled_mag(&mut self) -> Result<Vector3<i16>, E> {
-        let buffer = self.dev.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
+        let buffer = self.dev.read_xyz()?;
         Ok(self.to_vector_inverted(buffer, 0))
     }
 
     /// Read and returns Magnetometer measurements scaled, adjusted for factory
     /// sensitivities, and converted to Teslas.
     pub fn mag(&mut self) -> Result<Vector3<f32>, E> {
-        let buffer = self.dev.read_many::<U8>(Register::EXT_SENS_DATA_00)?;
+        let buffer = self.dev.read_xyz()?;
         Ok(self.scale_and_correct_mag(buffer, 0))
     }
 
@@ -681,7 +709,9 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
     fn _mag_scale(&mut self) -> Result<(), E> {
         // Set magnetometer data resolution and sample ODR
         let scale = self.mag_scale as u8;
-        self.ak8963_write(ak8963::Register::CNTL, scale << 4 | MMODE)?;
+        AK8963::write(&mut self.dev,
+                      ak8963::Register::CNTL,
+                      scale << 4 | MMODE)?;
         Ok(())
     }
 
@@ -696,7 +726,7 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E>
 
     /// Reads the AK8963 (magnetometer) WHO_AM_I register; should return `0x48`
     pub fn ak8963_who_am_i(&mut self) -> Result<u8, E> {
-        self.ak8963_read(ak8963::Register::WHO_AM_I)
+        AK8963::read(&mut self.dev, ak8963::Register::WHO_AM_I)
     }
 }
 
@@ -1114,38 +1144,6 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     /// Reads the WHO_AM_I register; should return `0x71`
     pub fn who_am_i(&mut self) -> Result<u8, E> {
         self.dev.read(Register::WHO_AM_I)
-    }
-
-    fn ak8963_read(&mut self, reg: ak8963::Register) -> Result<u8, E> {
-        self.dev
-            .write(Register::I2C_SLV4_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
-        self.dev.write(Register::I2C_SLV4_REG, reg.addr())?;
-
-        // start transfer
-        self.dev.write(Register::I2C_SLV4_CTRL, 0x80)?;
-
-        // wait until transfer is over
-        while self.dev.read(Register::I2C_MST_STATUS)? & (1 << 6) == 0 {}
-
-        self.dev.read(Register::I2C_SLV4_DI)
-    }
-
-    fn ak8963_write(&mut self,
-                    reg: ak8963::Register,
-                    val: u8)
-                    -> Result<(), E> {
-        self.dev
-            .write(Register::I2C_SLV4_ADDR, ak8963::I2C_ADDRESS | ak8963::W)?;
-        self.dev.write(Register::I2C_SLV4_REG, reg.addr())?;
-        self.dev.write(Register::I2C_SLV4_DO, val)?;
-
-        // start transfer
-        self.dev.write(Register::I2C_SLV4_CTRL, 0x80)?;
-
-        // wait until transfer is over
-        while self.dev.read(Register::I2C_MST_STATUS)? & (1 << 6) == 0 {}
-
-        Ok(())
     }
 }
 
