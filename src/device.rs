@@ -318,3 +318,53 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
         Ok(buffer)
     }
 }
+
+/// The trait describes how to aquire 9 degrees-of-freedom
+/// measurements (plug a temperature reading) from an MPU
+pub trait NineDOFDevice: Device + AK8963<Error = <Self as Device>::Error> {
+
+    /// Perform a 9DOF reading
+    /// 
+    /// The trait assumes a contiguous reading of (x, y, z) accelerometer, temperature, (x,y,z) gyroscope,
+    /// and (x, y, z) magnetometer. Essentially, this is the layout of a single SPI read transaction.
+    /// Any other implementors are required to meet this layout.
+    fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>;
+}
+
+impl<SPI, NCS, E> NineDOFDevice for SpiDevice<SPI, NCS>
+where
+    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+    NCS: OutputPin,
+{
+    fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>
+    {
+        self.read_many(reg)
+    }
+}
+
+impl<I2C, E> NineDOFDevice for I2cDevice<I2C>
+where
+    I2C: i2c::Read<Error = E>
+            + i2c::Write<Error = E>
+            + i2c::WriteRead<Error = E>
+{
+    fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>
+    {
+        let atg_buffer = Device::read_many::<U15>(self, reg)?;
+        let mag_buffer = AK8963::read_xyz(self)?;
+        let mut complete_buffer: GenericArray<u8, U21> = unsafe { mem::zeroed() };
+        
+        {
+            let complete_buffer = complete_buffer.as_mut_slice();
+            let atg_buffer = atg_buffer.as_slice();
+            let mag_buffer = mag_buffer.as_slice();
+
+            complete_buffer[..atg_buffer.len()].copy_from_slice(atg_buffer);
+            // Skip zeroth byte; see comment in AK8963 implementation for I2cDevice
+            complete_buffer[atg_buffer.len()..].copy_from_slice(&mag_buffer[1..]);
+
+        }
+
+        Ok(complete_buffer)
+    }
+}

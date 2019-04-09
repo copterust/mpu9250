@@ -82,7 +82,7 @@ pub use types::*;
 
 #[doc(hidden)]
 pub use device::Releasable;
-pub use device::{Device, I2cDevice, SpiDevice};
+pub use device::{Device, NineDOFDevice, I2cDevice, SpiDevice};
 
 /// Suported MPUx devices
 pub enum MpuXDevice {
@@ -526,7 +526,7 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
 }
 
 // Any device, 9DOF
-impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
+impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E> + NineDOFDevice,
 {
     // Private constructor that creates a MARG-based MPU with
     // the specificed device.
@@ -630,13 +630,11 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// + Magnetometer measurements (LSB).
     pub fn unscaled_all(&mut self) -> Result<UnscaledMargMeasurements, E> {
-        let atg_buffer = Device::read_many::<U15>(&mut self.dev, Register::ACCEL_XOUT_H)?;
-        let mag_buffer = AK8963::read_xyz(&mut self.dev)?;
-
-        let accel = self.to_vector(atg_buffer, 0);
-        let temp = ((u16(atg_buffer[7]) << 8) | u16(atg_buffer[8])) as i16;
-        let gyro = self.to_vector(atg_buffer, 8);
-        let mag = self.to_vector_inverted(mag_buffer, 0);
+        let buffer = NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let accel = self.to_vector(buffer, 0);
+        let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
+        let gyro = self.to_vector(buffer, 8);
+        let mag = self.to_vector_inverted(buffer, 14);
 
         Ok(UnscaledMargMeasurements { accel,
                                       gyro,
@@ -647,13 +645,12 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
     /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
     /// measurements scaled and converted to respective units.
     pub fn all(&mut self) -> Result<MargMeasurements, E> {
-        let atg_buffer = Device::read_many::<U15>(&mut self.dev, Register::ACCEL_XOUT_H)?;
-        let mag_buffer = AK8963::read_xyz(&mut self.dev)?;
+        let buffer = NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
 
-        let accel = self.scale_accel(atg_buffer, 0);
-        let temp = self.scale_temp(atg_buffer, 6);
-        let gyro = self.scale_gyro(atg_buffer, 8);
-        let mag = self.scale_and_correct_mag(mag_buffer, 0);
+        let accel = self.scale_accel(buffer, 0);
+        let temp = self.scale_temp(buffer, 6);
+        let gyro = self.scale_gyro(buffer, 8);
+        let mag = self.scale_and_correct_mag(buffer, 14);
 
         Ok(MargMeasurements { accel,
                               gyro,
