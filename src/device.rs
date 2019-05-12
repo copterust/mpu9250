@@ -163,15 +163,21 @@ impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
         Ok(())
     }
 
-    fn finalize<D: DelayMs<u8>>(&mut self, delay: &mut D) -> Result<(), Self::Error> {
+    fn finalize<D: DelayMs<u8>>(&mut self,
+                                delay: &mut D)
+                                -> Result<(), Self::Error> {
         // set aux I2C frequency to 400 KHz (should be configurable?)
         Device::write(self, Register::I2C_MST_CTRL, 0x0d)?;
 
         delay.delay_ms(10);
 
         // configure sampling of magnetometer
-        Device::write(self, Register::I2C_SLV0_ADDR, ak8963::I2C_ADDRESS | ak8963::R)?;
-        Device::write(self, Register::I2C_SLV0_REG, ak8963::Register::XOUT_L.addr())?;
+        Device::write(self,
+                      Register::I2C_SLV0_ADDR,
+                      ak8963::I2C_ADDRESS | ak8963::R)?;
+        Device::write(self,
+                      Register::I2C_SLV0_REG,
+                      ak8963::Register::XOUT_L.addr())?;
         Device::write(self, Register::I2C_SLV0_CTRL, 0x87)?;
 
         delay.delay_ms(10);
@@ -260,9 +266,7 @@ impl<E, I2C> Device for I2cDevice<I2C>
         let mut buffer: GenericArray<u8, N> = unsafe { mem::zeroed() };
         {
             let slice: &mut [u8] = &mut buffer;
-            self.i2c.write_read(MPU_I2C_ADDR,
-                                 &[reg as u8],
-                                 &mut slice[1..])?;
+            self.i2c.write_read(MPU_I2C_ADDR, &[reg as u8], &mut slice[1..])?;
         }
 
         Ok(buffer)
@@ -304,9 +308,7 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
 
     fn read(&mut self, reg: ak8963::Register) -> Result<u8, Self::Error> {
         let mut buffer = [0; 1];
-        self.i2c.write_read(ak8963::I2C_ADDRESS,
-                             &[reg.addr()],
-                             &mut buffer)?;
+        self.i2c.write_read(ak8963::I2C_ADDRESS, &[reg.addr()], &mut buffer)?;
         Ok(buffer[0])
     }
 
@@ -321,15 +323,15 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
     fn read_xyz(&mut self) -> Result<GenericArray<u8, U7>, Self::Error> {
         let mut buffer: GenericArray<u8, U7> = unsafe { mem::zeroed() };
 
-        // We need to leave the zeroth byte as a zero to conform with the 
+        // We need to leave the zeroth byte as a zero to conform with the
         // SPI device behaviors. We also want to read past the data bytes
         // to read register ST2. We're required to read ST2 after each
         // reading, otherwise the magnetometer blocks sampling. We can
         // achieve this in one I2C transaction
         self.i2c.write_read(ak8963::I2C_ADDRESS,
-                                &[ak8963::Register::XOUT_L.addr()],
-                                &mut buffer)?;
-        
+                             &[ak8963::Register::XOUT_L.addr()],
+                             &mut buffer)?;
+
         buffer[..].rotate_right(1);
         buffer[0] = 0; // Zero out ST2 afer rotation
         Ok(buffer)
@@ -338,47 +340,54 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
 
 /// The trait describes how to aquire 9 degrees-of-freedom
 /// measurements (plug a temperature reading) from an MPU
-pub trait NineDOFDevice: Device + AK8963<Error = <Self as Device>::Error> {
-
+pub trait NineDOFDevice:
+    Device + AK8963<Error = <Self as Device>::Error>
+{
     /// Perform a 9DOF reading
-    /// 
-    /// The trait assumes a contiguous reading of (x, y, z) accelerometer, temperature, (x,y,z) gyroscope,
-    /// and (x, y, z) magnetometer. Essentially, this is the layout of a single SPI read transaction.
+    ///
+    /// The trait assumes a contiguous reading of (x, y, z) accelerometer,
+    /// temperature, (x,y,z) gyroscope, and (x, y, z) magnetometer.
+    /// Essentially, this is the layout of a single SPI read transaction.
     /// Any other implementors are required to meet this layout.
-    fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>;
+    fn read_9dof(&mut self,
+                 reg: Register)
+                 -> Result<GenericArray<u8, U21>, <Self as Device>::Error>;
 }
 
 impl<SPI, NCS, E, EO> NineDOFDevice for SpiDevice<SPI, NCS>
     where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
           NCS: OutputPin<Error = EO>
 {
-    fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>
-    {
+    fn read_9dof(&mut self,
+                 reg: Register)
+                 -> Result<GenericArray<u8, U21>, <Self as Device>::Error> {
         self.read_many(reg)
     }
 }
 
 impl<I2C, E> NineDOFDevice for I2cDevice<I2C>
-where
-    I2C: i2c::Read<Error = E>
-            + i2c::Write<Error = E>
-            + i2c::WriteRead<Error = E>
+    where I2C: i2c::Read<Error = E>
+              + i2c::Write<Error = E>
+              + i2c::WriteRead<Error = E>
 {
-    fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>
-    {
+    fn read_9dof(&mut self,
+                 reg: Register)
+                 -> Result<GenericArray<u8, U21>, <Self as Device>::Error> {
         let atg_buffer = Device::read_many::<U15>(self, reg)?;
         let mag_buffer = AK8963::read_xyz(self)?;
-        let mut complete_buffer: GenericArray<u8, U21> = unsafe { mem::zeroed() };
-        
+        let mut complete_buffer: GenericArray<u8, U21> =
+            unsafe { mem::zeroed() };
+
         {
             let complete_buffer = complete_buffer.as_mut_slice();
             let atg_buffer = atg_buffer.as_slice();
             let mag_buffer = mag_buffer.as_slice();
 
             complete_buffer[..atg_buffer.len()].copy_from_slice(atg_buffer);
-            // Skip zeroth byte; see comment in AK8963 implementation for I2cDevice
-            complete_buffer[atg_buffer.len()..].copy_from_slice(&mag_buffer[1..]);
-
+            // Skip zeroth byte; see comment in AK8963 implementation for
+            // I2cDevice
+            complete_buffer[atg_buffer.len()..].copy_from_slice(&mag_buffer
+                                                                    [1..]);
         }
 
         Ok(complete_buffer)

@@ -82,7 +82,7 @@ pub use types::*;
 
 #[doc(hidden)]
 pub use device::Releasable;
-pub use device::{Device, NineDOFDevice, I2cDevice, SpiDevice};
+pub use device::{Device, I2cDevice, NineDOFDevice, SpiDevice};
 
 /// Suported MPUx devices
 pub enum MpuXDevice {
@@ -438,9 +438,7 @@ mod i2c_defs {
         {
             self.reset_device(|i2cdev| {
                     let i2c = i2cdev.release();
-                    reinit_fn(i2c).map(|i2c| {
-                                             I2cDevice::new(i2c)
-                                         })
+                    reinit_fn(i2c).map(|i2c| I2cDevice::new(i2c))
                 })
         }
     }
@@ -542,7 +540,8 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
 }
 
 // Any device, 9DOF
-impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E> + NineDOFDevice,
+impl<E, DEV> Mpu9250<DEV, Marg>
+    where DEV: Device<Error = E> + AK8963<Error = E> + NineDOFDevice
 {
     // Private constructor that creates a MARG-based MPU with
     // the specificed device.
@@ -606,7 +605,7 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
         // First extract the factory calibration for each magnetometer axis
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
-        
+
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x0F)?;
         delay.delay_ms(20);
         let mag_x_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAX)?;
@@ -623,7 +622,7 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
         // Set magnetometer data resolution and sample ODR
         self._mag_scale()?;
         delay.delay_ms(10);
-        
+
         AK8963::finalize(&mut self.dev, delay)?;
 
         Ok(())
@@ -646,7 +645,8 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// + Magnetometer measurements (LSB).
     pub fn unscaled_all(&mut self) -> Result<UnscaledMargMeasurements, E> {
-        let buffer = NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let buffer =
+            NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
         let accel = self.to_vector(buffer, 0);
         let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
         let gyro = self.to_vector(buffer, 8);
@@ -661,7 +661,8 @@ impl<E, DEV> Mpu9250<DEV, Marg> where DEV: Device<Error = E> + AK8963<Error = E>
     /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
     /// measurements scaled and converted to respective units.
     pub fn all(&mut self) -> Result<MargMeasurements, E> {
-        let buffer = NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let buffer =
+            NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
 
         let accel = self.scale_accel(buffer, 0);
         let temp = self.scale_temp(buffer, 6);
