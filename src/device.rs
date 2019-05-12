@@ -5,7 +5,7 @@ use core::mem;
 use hal::blocking::delay::DelayMs;
 use hal::blocking::i2c;
 use hal::blocking::spi;
-use hal::digital::OutputPin;
+use hal::digital::v2::OutputPin;
 
 use generic_array::typenum::consts::*;
 use generic_array::{ArrayLength, GenericArray};
@@ -91,25 +91,42 @@ impl<SPI, NCS, E> Releasable for SpiDevice<SPI, NCS>
     }
 }
 
-impl<SPI, NCS, E> Device for SpiDevice<SPI, NCS>
+/// SPI Error
+#[derive(Debug, Copy, Clone)]
+pub enum SpiError<E, E2> {
+    /// Bus io error
+    BusError(E),
+    /// NCS error
+    NCSError(E2),
+}
+
+impl<E, E2> core::convert::From<E> for SpiError<E, E2> {
+    fn from(error: E) -> Self {
+        SpiError::BusError(error)
+    }
+}
+
+impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
     where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-          NCS: OutputPin
+          NCS: OutputPin<Error = EO>
 {
-    type Error = E;
+    type Error = SpiError<E, EO>;
 
     // Note: implementation is consistent with previous Mpu9250 private
     // methods. Using read and modify as default trait impls
 
-    fn read_many<N>(&mut self, reg: Register) -> Result<GenericArray<u8, N>, E>
+    fn read_many<N>(&mut self,
+                    reg: Register)
+                    -> Result<GenericArray<u8, N>, Self::Error>
         where N: ArrayLength<u8>
     {
         let mut buffer: GenericArray<u8, N> = unsafe { mem::zeroed() };
         {
             let slice: &mut [u8] = &mut buffer;
             slice[0] = reg.read_address();
-            self.ncs.set_low();
+            self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
             self.spi.transfer(slice)?;
-            self.ncs.set_high();
+            self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
         }
 
         Ok(buffer)
@@ -121,19 +138,19 @@ impl<SPI, NCS, E> Device for SpiDevice<SPI, NCS>
     //      as device drivers should not know about such
     //      minutiæ details.
     #[inline(never)]
-    fn write(&mut self, reg: Register, val: u8) -> Result<(), E> {
-        self.ncs.set_low();
+    fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
+        self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
         self.spi.write(&[reg.write_address(), val])?;
-        self.ncs.set_high();
+        self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
         Ok(())
     }
 }
 
-impl<SPI, NCS, E> AK8963 for SpiDevice<SPI, NCS>
+impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
     where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-          NCS: OutputPin
+          NCS: OutputPin<Error = EO>
 {
-    type Error = E;
+    type Error = SpiError<E, EO>;
 
     fn init<D: DelayMs<u8>>(&mut self,
                             delay: &mut D)
@@ -331,10 +348,9 @@ pub trait NineDOFDevice: Device + AK8963<Error = <Self as Device>::Error> {
     fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>;
 }
 
-impl<SPI, NCS, E> NineDOFDevice for SpiDevice<SPI, NCS>
-where
-    SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-    NCS: OutputPin,
+impl<SPI, NCS, E, EO> NineDOFDevice for SpiDevice<SPI, NCS>
+    where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+          NCS: OutputPin<Error = EO>
 {
     fn read_9dof(&mut self, reg: Register) -> Result<GenericArray<u8, U21>, <Self as Device>::Error>
     {

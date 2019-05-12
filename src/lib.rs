@@ -161,7 +161,7 @@ const TEMP_ROOM_OFFSET: f32 = 0.0;
 mod spi_defs {
     use super::*;
     use hal::blocking::spi;
-    use hal::digital::OutputPin;
+    use hal::digital::v2::OutputPin;
 
     // SPI device, 6DOF
     impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Imu>
@@ -170,10 +170,12 @@ mod spi_defs {
     {
         /// Creates a new [`Imu`] driver from a SPI peripheral and a NCS pin
         /// with default configuration.
-        pub fn imu_default<D>(spi: SPI,
-                              ncs: NCS,
-                              delay: &mut D)
-                              -> Result<Self, Error<E>>
+        pub fn imu_default<D>(
+            spi: SPI,
+            ncs: NCS,
+            delay: &mut D)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
             Self::imu(spi, ncs, delay, &mut MpuConfig::imu())
@@ -183,11 +185,13 @@ mod spi_defs {
         /// provided configuration [`Config`].
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn imu<D>(spi: SPI,
-                      ncs: NCS,
-                      delay: &mut D,
-                      config: &mut MpuConfig<Imu>)
-                      -> Result<Self, Error<E>>
+        pub fn imu<D>(
+            spi: SPI,
+            ncs: NCS,
+            delay: &mut D,
+            config: &mut MpuConfig<Imu>)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
             let dev = SpiDevice::new(spi, ncs);
@@ -204,12 +208,14 @@ mod spi_defs {
         ///    interrupt registers may be read using SPI at 20MHz."
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn imu_with_reinit<D, F>(spi: SPI,
-                                     ncs: NCS,
-                                     delay: &mut D,
-                                     config: &mut MpuConfig<Imu>,
-                                     reinit_fn: F)
-                                     -> Result<Self, Error<E>>
+        pub fn imu_with_reinit<D, F>(
+            spi: SPI,
+            ncs: NCS,
+            delay: &mut D,
+            config: &mut MpuConfig<Imu>,
+            reinit_fn: F)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where D: DelayMs<u8>,
                   F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
         {
@@ -228,10 +234,12 @@ mod spi_defs {
         /// with default [`Config`].
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn marg_default<D>(spi: SPI,
-                               ncs: NCS,
-                               delay: &mut D)
-                               -> Result<Self, Error<E>>
+        pub fn marg_default<D>(
+            spi: SPI,
+            ncs: NCS,
+            delay: &mut D)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
             Mpu9250::marg(spi, ncs, delay, &mut MpuConfig::marg())
@@ -241,11 +249,13 @@ mod spi_defs {
         /// with provided configuration [`Config`].
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn marg<D>(spi: SPI,
-                       ncs: NCS,
-                       delay: &mut D,
-                       config: &mut MpuConfig<Marg>)
-                       -> Result<Self, Error<E>>
+        pub fn marg<D>(
+            spi: SPI,
+            ncs: NCS,
+            delay: &mut D,
+            config: &mut MpuConfig<Marg>)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
             let dev = SpiDevice::new(spi, ncs);
@@ -262,12 +272,14 @@ mod spi_defs {
         ///    interrupt registers may be read using SPI at 20MHz."
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
-        pub fn marg_with_reinit<D, F>(spi: SPI,
-                                      ncs: NCS,
-                                      delay: &mut D,
-                                      config: &mut MpuConfig<Marg>,
-                                      reinit_fn: F)
-                                      -> Result<Self, Error<E>>
+        pub fn marg_with_reinit<D, F>(
+            spi: SPI,
+            ncs: NCS,
+            delay: &mut D,
+            config: &mut MpuConfig<Marg>,
+            reinit_fn: F)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where D: DelayMs<u8>,
                   F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
         {
@@ -287,7 +299,11 @@ mod spi_defs {
             self.dev.release()
         }
 
-        fn reinit_spi_device<F>(self, reinit_fn: F) -> Result<Self, Error<E>>
+        fn reinit_spi_device<F>(
+            self,
+            reinit_fn: F)
+            -> Result<Self,
+                      Error<<SpiDevice<SPI, NCS> as device::Device>::Error>>
             where F: FnOnce(SPI, NCS) -> Option<(SPI, NCS)>
         {
             self.reset_device(|spidev| {
@@ -342,10 +358,10 @@ mod i2c_defs {
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
         pub fn imu_with_reinit<D, F>(i2c: I2C,
-                                      delay: &mut D,
-                                      config: &mut MpuConfig<Imu>,
-                                      reinit_fn: F)
-                                      -> Result<Self, Error<E>>
+                                     delay: &mut D,
+                                     config: &mut MpuConfig<Imu>,
+                                     reinit_fn: F)
+                                     -> Result<Self, Error<E>>
             where D: DelayMs<u8>,
                   F: FnOnce(I2C) -> Option<I2C>
         {
