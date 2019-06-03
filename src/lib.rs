@@ -696,7 +696,7 @@ impl<E, DEV> Mpu9250<DEV, Marg>
     }
 
     /// Read and returns Magnetometer measurements scaled, adjusted for factory
-    /// sensitivities, and converted to Teslas.
+    /// sensitivities, and converted to microTeslas.
     pub fn mag(&mut self) -> Result<Vector3<f32>, E> {
         let buffer = self.dev.read_xyz()?;
         Ok(self.scale_and_correct_mag(buffer, 0))
@@ -1293,7 +1293,7 @@ pub struct MargMeasurements {
     pub accel: Vector3<f32>,
     /// Gyroscope measurements (rad/s)
     pub gyro: Vector3<f32>,
-    /// Magnetometer measurements (T, teslas)
+    /// Magnetometer measurements (mT, micro Teslas)
     pub mag: Vector3<f32>,
     /// Temperature sensor measurement (C)
     pub temp: f32,
