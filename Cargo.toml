@@ -1,7 +1,7 @@
 [package]
 authors = ["Roma Sokolov", "Alexander Zhuravlev", "Jorge Aparicio <jorge@japaric.io>"]
 name = "mpu9250"
-version = "0.12.2"
+version = "0.12.3-alpha.0"
 description = "no_std driver for the MPU9250 & onboard AK8963 (accelerometer + gyroscope +  magnetometer IMU)"
 keywords = ["arm", "cortex-m", "stm32", "hal"]
 license = "MIT OR Apache-2.0"
