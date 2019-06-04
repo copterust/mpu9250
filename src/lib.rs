@@ -1293,7 +1293,7 @@ pub struct MargMeasurements {
     pub accel: Vector3<f32>,
     /// Gyroscope measurements (rad/s)
     pub gyro: Vector3<f32>,
-    /// Magnetometer measurements (mT, micro Teslas)
+    /// Magnetometer measurements (μT)
     pub mag: Vector3<f32>,
     /// Temperature sensor measurement (C)
     pub temp: f32,
