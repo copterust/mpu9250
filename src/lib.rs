@@ -56,7 +56,6 @@
 extern crate bitflags;
 extern crate cast;
 extern crate embedded_hal as hal;
-extern crate generic_array;
 extern crate nalgebra;
 
 mod ak8963;
@@ -69,8 +68,6 @@ use ak8963::AK8963;
 use core::marker::PhantomData;
 
 use cast::{f32, i32, u16};
-use generic_array::typenum::consts::*;
-use generic_array::{ArrayLength, GenericArray};
 use nalgebra::convert;
 pub use nalgebra::Vector3;
 
@@ -496,7 +493,8 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// measurements (LSB).
     pub fn unscaled_all(&mut self) -> Result<UnscaledImuMeasurements, E> {
-        let buffer = self.dev.read_many::<U15>(Register::ACCEL_XOUT_H)?;
+        let buffer = &mut [0; 15];
+        self.dev.read_many(Register::ACCEL_XOUT_H, &mut buffer[..])?;
         let accel = self.to_vector(buffer, 0);
         let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
         let gyro = self.to_vector(buffer, 8);
@@ -509,7 +507,8 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
     /// Reads and returns Accelerometer + Gyroscope + Thermometer
     /// measurements scaled and converted to respective units.
     pub fn all(&mut self) -> Result<ImuMeasurements, E> {
-        let buffer = self.dev.read_many::<U15>(Register::ACCEL_XOUT_H)?;
+        let buffer = &mut [0; 15];
+        self.dev.read_many(Register::ACCEL_XOUT_H, &mut buffer[..])?;
 
         let accel = self.scale_accel(buffer, 0);
         let temp = self.scale_temp(buffer, 6);
@@ -645,8 +644,10 @@ impl<E, DEV> Mpu9250<DEV, Marg>
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// + Magnetometer measurements (LSB).
     pub fn unscaled_all(&mut self) -> Result<UnscaledMargMeasurements, E> {
-        let buffer =
-            NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let buffer = &mut [0; 21];
+        NineDOFDevice::read_9dof(&mut self.dev,
+                                 Register::ACCEL_XOUT_H,
+                                 buffer)?;
         let accel = self.to_vector(buffer, 0);
         let temp = ((u16(buffer[7]) << 8) | u16(buffer[8])) as i16;
         let gyro = self.to_vector(buffer, 8);
@@ -661,8 +662,10 @@ impl<E, DEV> Mpu9250<DEV, Marg>
     /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
     /// measurements scaled and converted to respective units.
     pub fn all(&mut self) -> Result<MargMeasurements, E> {
-        let buffer =
-            NineDOFDevice::read_9dof(&mut self.dev, Register::ACCEL_XOUT_H)?;
+        let buffer = &mut [0; 21];
+        NineDOFDevice::read_9dof(&mut self.dev,
+                                 Register::ACCEL_XOUT_H,
+                                 buffer)?;
 
         let accel = self.scale_accel(buffer, 0);
         let temp = self.scale_temp(buffer, 6);
@@ -675,12 +678,10 @@ impl<E, DEV> Mpu9250<DEV, Marg>
                               mag })
     }
 
-    fn scale_and_correct_mag<N>(&self,
-                                buffer: GenericArray<u8, N>,
-                                offset: usize)
-                                -> Vector3<f32>
-        where N: ArrayLength<u8>
-    {
+    fn scale_and_correct_mag(&self,
+                             buffer: &[u8],
+                             offset: usize)
+                             -> Vector3<f32> {
         let resolution = self.mag_scale.resolution();
         let mut fraw: Vector3<f32> =
             convert(self.to_vector_inverted(buffer, offset));
@@ -691,14 +692,16 @@ impl<E, DEV> Mpu9250<DEV, Marg>
 
     /// Reads and returns raw unscaled Magnetometer measurements (LSB).
     pub fn unscaled_mag(&mut self) -> Result<Vector3<i16>, E> {
-        let buffer = self.dev.read_xyz()?;
+        let buffer = &mut [0; 7];
+        self.dev.read_xyz(buffer)?;
         Ok(self.to_vector_inverted(buffer, 0))
     }
 
     /// Read and returns Magnetometer measurements scaled, adjusted for factory
     /// sensitivities, and converted to microTeslas.
     pub fn mag(&mut self) -> Result<Vector3<f32>, E> {
-        let buffer = self.dev.read_xyz()?;
+        let buffer = &mut [0; 7];
+        self.dev.read_xyz(buffer)?;
         Ok(self.scale_and_correct_mag(buffer, 0))
     }
 
@@ -809,12 +812,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         }
     }
 
-    fn scale_accel<N>(&self,
-                      buffer: GenericArray<u8, N>,
-                      offset: usize)
-                      -> Vector3<f32>
-        where N: ArrayLength<u8>
-    {
+    fn scale_accel(&self, buffer: &[u8], offset: usize) -> Vector3<f32> {
         let resolution = self.accel_scale.resolution();
         let scale = G * resolution;
         let mut fraw: Vector3<f32> = convert(self.to_vector(buffer, offset));
@@ -822,12 +820,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         fraw
     }
 
-    fn scale_gyro<N>(&self,
-                     buffer: GenericArray<u8, N>,
-                     offset: usize)
-                     -> Vector3<f32>
-        where N: ArrayLength<u8>
-    {
+    fn scale_gyro(&self, buffer: &[u8], offset: usize) -> Vector3<f32> {
         let resolution = self.gyro_scale.resolution();
         let scale = PI_180 * resolution;
         let mut fraw: Vector3<f32> = convert(self.to_vector(buffer, offset));
@@ -835,9 +828,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         fraw
     }
 
-    fn scale_temp<N>(&self, buffer: GenericArray<u8, N>, offset: usize) -> f32
-        where N: ArrayLength<u8>
-    {
+    fn scale_temp(&self, buffer: &[u8], offset: usize) -> f32 {
         let t = f32((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]));
         (t - TEMP_ROOM_OFFSET) / TEMP_SENSITIVITY + TEMP_DIFF
     }
@@ -877,25 +868,29 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
     pub fn unscaled_accel(&mut self) -> Result<Vector3<i16>, E> {
-        let buffer = self.dev.read_many::<U7>(Register::ACCEL_XOUT_H)?;
+        let buffer = &mut [0; 7];
+        self.dev.read_many(Register::ACCEL_XOUT_H, buffer)?;
         Ok(self.to_vector(buffer, 0))
     }
 
     /// Reads and returns accelerometer measurements scaled and converted to g.
     pub fn accel(&mut self) -> Result<Vector3<f32>, E> {
-        let buffer = self.dev.read_many::<U7>(Register::ACCEL_XOUT_H)?;
+        let buffer = &mut [0; 7];
+        self.dev.read_many(Register::ACCEL_XOUT_H, buffer)?;
         Ok(self.scale_accel(buffer, 0))
     }
 
     /// Reads and returns unsacled Gyroscope measurements (LSB).
     pub fn unscaled_gyro(&mut self) -> Result<Vector3<i16>, E> {
-        let buffer = self.dev.read_many::<U7>(Register::GYRO_XOUT_H)?;
+        let buffer = &mut [0; 7];
+        self.dev.read_many(Register::GYRO_XOUT_H, buffer)?;
         Ok(self.to_vector(buffer, 0))
     }
 
     /// Reads and returns gyroscope measurements scaled and converted to rad/s.
     pub fn gyro(&mut self) -> Result<Vector3<f32>, E> {
-        let buffer = self.dev.read_many::<U7>(Register::GYRO_XOUT_H)?;
+        let buffer = &mut [0; 7];
+        self.dev.read_many(Register::GYRO_XOUT_H, buffer)?;
         Ok(self.scale_gyro(buffer, 0))
     }
 
@@ -978,14 +973,16 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
 
     /// Reads and returns raw unscaled temperature sensor measurements (LSB).
     pub fn raw_temp(&mut self) -> Result<i16, E> {
-        let buffer = self.dev.read_many::<U3>(Register::TEMP_OUT_H)?;
+        let buffer = &mut [0; 3];
+        self.dev.read_many(Register::TEMP_OUT_H, buffer)?;
         let t = (u16(buffer[1]) << 8) | u16(buffer[2]);
         Ok(t as i16)
     }
 
     /// Reads and returns adjusted temperature measurements converted to C.
     pub fn temp(&mut self) -> Result<f32, E> {
-        let buffer = self.dev.read_many::<U3>(Register::TEMP_OUT_H)?;
+        let buffer = &mut [0; 3];
+        self.dev.read_many(Register::TEMP_OUT_H, buffer)?;
         Ok(self.scale_temp(buffer, 0))
     }
 
@@ -1071,7 +1068,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         // Disable gyro and accelerometer sensors for FIFO
         self.dev.write(Register::FIFO_EN, 0x00)?;
         // read FIFO sample count
-        let buffer = self.dev.read_many::<U3>(Register::FIFO_COUNT_H)?;
+        let buffer = &mut [0; 13]; // larger buffer is used later
+        self.dev.read_many(Register::FIFO_COUNT_H, &mut buffer[0..3])?;
         let fifo_count = ((u16(buffer[1]) << 8) | u16(buffer[2])) as i16;
         // Aim for at least half
         // How many sets of full gyro and accelerometer data for averaging
@@ -1084,7 +1082,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let mut accel_temp: Vector3<i32>;
         let mut gyro_temp: Vector3<i32>;
         for _ in 0..packet_count {
-            let buffer = self.dev.read_many::<U13>(Register::FIFO_RW)?;
+            self.dev.read_many(Register::FIFO_RW, buffer)?;
             accel_temp = convert(self.to_vector(buffer, 0));
             gyro_temp = convert(self.to_vector(buffer, 6));
             accel_biases += accel_temp;
@@ -1127,12 +1125,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         Ok(faccel_biases)
     }
 
-    fn to_vector<N>(&self,
-                    buffer: GenericArray<u8, N>,
-                    offset: usize)
-                    -> Vector3<i16>
-        where N: ArrayLength<u8>
-    {
+    fn to_vector(&self, buffer: &[u8], offset: usize) -> Vector3<i16> {
         Vector3::new(((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]))
                      as i16,
                      ((u16(buffer[offset + 3]) << 8) | u16(buffer[offset + 4]))
@@ -1141,12 +1134,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
                      as i16)
     }
 
-    fn to_vector_inverted<N>(&self,
-                             buffer: GenericArray<u8, N>,
-                             offset: usize)
-                             -> Vector3<i16>
-        where N: ArrayLength<u8>
-    {
+    fn to_vector_inverted(&self, buffer: &[u8], offset: usize) -> Vector3<i16> {
         Vector3::new(((u16(buffer[offset + 2]) << 8) + u16(buffer[offset + 1]))
                      as i16,
                      ((u16(buffer[offset + 4]) << 8) + u16(buffer[offset + 3]))
