@@ -16,10 +16,6 @@ bitflags = "1.0"
 default-features = false
 version = "0.2.2"
 
-[dependencies.nalgebra]
-default-features = false
-version = "0.18"
-
 [dev-dependencies]
 linux-embedded-hal = "0.2"
 
