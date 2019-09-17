@@ -1,14 +1,9 @@
 use ak8963::{self, AK8963};
 
-use core::mem;
-
 use hal::blocking::delay::DelayMs;
 use hal::blocking::i2c;
 use hal::blocking::spi;
 use hal::digital::v2::OutputPin;
-
-use generic_array::typenum::consts::*;
-use generic_array::{ArrayLength, GenericArray};
 
 use Register;
 
@@ -33,17 +28,18 @@ pub trait Device: Releasable {
     type Error;
 
     /// Read many values from register
-    fn read_many<N: ArrayLength<u8>>(
-        &mut self,
-        reg: Register)
-        -> Result<GenericArray<u8, N>, Self::Error>;
+    fn read_many(&mut self,
+                 reg: Register,
+                 buffer: &mut [u8])
+                 -> Result<(), Self::Error>;
 
     /// Write the provided value to register
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error>;
 
     /// Read a single value from the register
     fn read(&mut self, reg: Register) -> Result<u8, Self::Error> {
-        let buffer = self.read_many::<U2>(reg)?;
+        let buffer = &mut [0; 2];
+        self.read_many(reg, buffer)?;
         Ok(buffer[1])
     }
 
@@ -115,21 +111,16 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
     // Note: implementation is consistent with previous Mpu9250 private
     // methods. Using read and modify as default trait impls
 
-    fn read_many<N>(&mut self,
-                    reg: Register)
-                    -> Result<GenericArray<u8, N>, Self::Error>
-        where N: ArrayLength<u8>
-    {
-        let mut buffer: GenericArray<u8, N> = unsafe { mem::zeroed() };
-        {
-            let slice: &mut [u8] = &mut buffer;
-            slice[0] = reg.read_address();
-            self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
-            self.spi.transfer(slice)?;
-            self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
-        }
+    fn read_many(&mut self,
+                 reg: Register,
+                 buffer: &mut [u8])
+                 -> Result<(), Self::Error> {
+        buffer[0] = reg.read_address();
+        self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
+        self.spi.transfer(buffer)?;
+        self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
 
-        Ok(buffer)
+        Ok(())
     }
 
     // XXX: It seems that without inline(never), when compiling
@@ -218,8 +209,9 @@ impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
         Ok(())
     }
 
-    fn read_xyz(&mut self) -> Result<GenericArray<u8, U7>, Self::Error> {
-        Device::read_many::<U7>(self, Register::EXT_SENS_DATA_00)
+    fn read_xyz(&mut self, buffer: &mut [u8; 7]) -> Result<(), Self::Error> {
+        Device::read_many(self, Register::EXT_SENS_DATA_00, buffer)?;
+        Ok(())
     }
 }
 
@@ -259,17 +251,12 @@ impl<E, I2C> Device for I2cDevice<I2C>
 {
     type Error = E;
 
-    fn read_many<N: ArrayLength<u8>>(
-        &mut self,
-        reg: Register)
-        -> Result<GenericArray<u8, N>, Self::Error> {
-        let mut buffer: GenericArray<u8, N> = unsafe { mem::zeroed() };
-        {
-            let slice: &mut [u8] = &mut buffer;
-            self.i2c.write_read(MPU_I2C_ADDR, &[reg as u8], &mut slice[1..])?;
-        }
-
-        Ok(buffer)
+    fn read_many(&mut self,
+                 reg: Register,
+                 buffer: &mut [u8])
+                 -> Result<(), Self::Error> {
+        self.i2c.write_read(MPU_I2C_ADDR, &[reg as u8], &mut buffer[1..])?;
+        Ok(())
     }
 
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
@@ -320,9 +307,7 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
         self.i2c.write(ak8963::I2C_ADDRESS, &buff)
     }
 
-    fn read_xyz(&mut self) -> Result<GenericArray<u8, U7>, Self::Error> {
-        let mut buffer: GenericArray<u8, U7> = unsafe { mem::zeroed() };
-
+    fn read_xyz(&mut self, buffer: &mut [u8; 7]) -> Result<(), Self::Error> {
         // We need to leave the zeroth byte as a zero to conform with the
         // SPI device behaviors. We also want to read past the data bytes
         // to read register ST2. We're required to read ST2 after each
@@ -330,11 +315,11 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
         // achieve this in one I2C transaction
         self.i2c.write_read(ak8963::I2C_ADDRESS,
                              &[ak8963::Register::XOUT_L.addr()],
-                             &mut buffer)?;
+                             buffer)?;
 
         buffer[..].rotate_right(1);
         buffer[0] = 0; // Zero out ST2 afer rotation
-        Ok(buffer)
+        Ok(())
     }
 }
 
@@ -350,8 +335,9 @@ pub trait NineDOFDevice:
     /// Essentially, this is the layout of a single SPI read transaction.
     /// Any other implementors are required to meet this layout.
     fn read_9dof(&mut self,
-                 reg: Register)
-                 -> Result<GenericArray<u8, U21>, <Self as Device>::Error>;
+                 reg: Register,
+                 buffer: &mut [u8; 21])
+                 -> Result<(), <Self as Device>::Error>;
 }
 
 impl<SPI, NCS, E, EO> NineDOFDevice for SpiDevice<SPI, NCS>
@@ -359,9 +345,11 @@ impl<SPI, NCS, E, EO> NineDOFDevice for SpiDevice<SPI, NCS>
           NCS: OutputPin<Error = EO>
 {
     fn read_9dof(&mut self,
-                 reg: Register)
-                 -> Result<GenericArray<u8, U21>, <Self as Device>::Error> {
-        self.read_many(reg)
+                 reg: Register,
+                 buffer: &mut [u8; 21])
+                 -> Result<(), <Self as Device>::Error> {
+        self.read_many(reg, buffer)?;
+        Ok(())
     }
 }
 
@@ -371,25 +359,15 @@ impl<I2C, E> NineDOFDevice for I2cDevice<I2C>
               + i2c::WriteRead<Error = E>
 {
     fn read_9dof(&mut self,
-                 reg: Register)
-                 -> Result<GenericArray<u8, U21>, <Self as Device>::Error> {
-        let atg_buffer = Device::read_many::<U15>(self, reg)?;
-        let mag_buffer = AK8963::read_xyz(self)?;
-        let mut complete_buffer: GenericArray<u8, U21> =
-            unsafe { mem::zeroed() };
+                 reg: Register,
+                 buffer: &mut [u8; 21])
+                 -> Result<(), <Self as Device>::Error> {
+        Device::read_many(self, reg, &mut buffer[0..15])?;
 
-        {
-            let complete_buffer = complete_buffer.as_mut_slice();
-            let atg_buffer = atg_buffer.as_slice();
-            let mag_buffer = mag_buffer.as_slice();
+        let xyz_buffer = &mut [0; 7];
+        AK8963::read_xyz(self, xyz_buffer)?;
+        buffer[15..21].copy_from_slice(&xyz_buffer[1..7]);
 
-            complete_buffer[..atg_buffer.len()].copy_from_slice(atg_buffer);
-            // Skip zeroth byte; see comment in AK8963 implementation for
-            // I2cDevice
-            complete_buffer[atg_buffer.len()..].copy_from_slice(&mag_buffer
-                                                                    [1..]);
-        }
-
-        Ok(complete_buffer)
+        Ok(())
     }
 }

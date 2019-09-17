@@ -2,9 +2,6 @@
 
 use hal::blocking::delay::DelayMs;
 
-use generic_array::typenum::consts::*;
-use generic_array::GenericArray;
-
 // I2C slave address
 pub const I2C_ADDRESS: u8 = 0x0c;
 pub const R: u8 = 1 << 7;
@@ -56,7 +53,9 @@ pub trait AK8963 {
 
     /// Perform final initialization. Invoked after acquiring the magnetomter's
     /// calibration values and setting the sampling rate and resolution.
-    fn finalize<D: DelayMs<u8>>(&mut self, _: &mut D) -> Result<(), Self::Error> {
+    fn finalize<D: DelayMs<u8>>(&mut self,
+                                _: &mut D)
+                                -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -67,5 +66,5 @@ pub trait AK8963 {
     fn write(&mut self, reg: Register, value: u8) -> Result<(), Self::Error>;
 
     /// Read the magnetometer's X,Y,Z triplet
-    fn read_xyz(&mut self) -> Result<GenericArray<u8, U7>, Self::Error>;
+    fn read_xyz(&mut self, buffer: &mut [u8; 7]) -> Result<(), Self::Error>;
 }
