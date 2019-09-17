@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v0.20.0]
+
+### Changed
+
+#### Breaking
+
+Remove generic-array and nalgebra dependencies to save on compilation time and on binary size (shaves off a few bytes).
+This is a breaking change, since methods
+that returned previously `Vector3<X>` now return `T: From<[X; 3]>`, similar to std's `Iterator::collect()`.
+
 ## [v0.12.1]
 
 ### Fixed
