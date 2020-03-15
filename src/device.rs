@@ -36,6 +36,12 @@ pub trait Device: Releasable {
     /// Write the provided value to register
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error>;
 
+    /// Write the provided data block to register
+    fn write_many(&mut self,
+                  reg: Register,
+                  buffer: &[u8])
+                  -> Result<(), Self::Error>;
+
     /// Read a single value from the register
     fn read(&mut self, reg: Register) -> Result<u8, Self::Error> {
         let buffer = &mut [0; 2];
@@ -132,6 +138,18 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
         self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
         self.spi.write(&[reg.write_address(), val])?;
+        self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
+        Ok(())
+    }
+
+    fn write_many(&mut self,
+                  reg: Register,
+                  buffer: &[u8])
+                  -> Result<(), Self::Error> {
+        self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
+        for val in buffer {
+            self.spi.write(&[reg.write_address(), *val])?;
+        }
         self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
         Ok(())
     }
@@ -262,6 +280,22 @@ impl<E, I2C> Device for I2cDevice<I2C>
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
         let buff: [u8; 2] = [reg as u8, val];
         self.i2c.write(MPU_I2C_ADDR, &buff)
+    }
+
+    fn write_many(&mut self,
+                  reg: Register,
+                  buffer: &[u8])
+                  -> Result<(), Self::Error> {
+        let mut message: [u8; 17] = [0; 17];
+        for (i, el) in buffer.iter().enumerate() {
+            message[i + 1] = *el;
+            if i > 16 {
+                // TODO handle error here
+                break;
+            }
+        }
+        message[0] = reg as u8;
+        self.i2c.write(MPU_I2C_ADDR, &message)
     }
 }
 
