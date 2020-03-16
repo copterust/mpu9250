@@ -201,6 +201,37 @@ impl Default for MagScale {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+/// Dmp data output rate
+// rate = 200 / div - 1
+pub enum DmpRate {
+    /// Update data at 200Hz
+    _200Hz = 0,
+    /// Update data at 100Hz
+    _100Hz = 1,
+    /// Update data at 50Hz
+    _50Hz = 3,
+    /// Update data at 40Hz
+    _40Hz = 4,
+    /// Update data at 20Hz
+    _25Hz = 8,
+    /// Update data at 25Hz
+    _20Hz = 9,
+    /// Update data at 10Hz
+    _10Hz = 19,
+    /// Update data at 8Hz
+    _8Hz = 24,
+    /// Update data at 5Hz
+    _5Hz = 39,
+    /// Update data at 4Hz
+    _4Hz = 49,
+}
+impl Default for DmpRate {
+    fn default() -> Self {
+        DmpRate::_200Hz
+    }
+}
+
 /// Configuration of MPU9250
 #[derive(Copy, Clone, Debug)]
 pub struct MpuConfig<MODE> {
@@ -210,6 +241,7 @@ pub struct MpuConfig<MODE> {
     pub(crate) accel_data_rate: Option<AccelDataRate>,
     pub(crate) gyro_temp_data_rate: Option<GyroTempDataRate>,
     pub(crate) sample_rate_divisor: Option<u8>,
+    pub(crate) dmp_rate: Option<DmpRate>,
     _mode: PhantomData<MODE>,
 }
 
@@ -230,6 +262,7 @@ impl MpuConfig<types::Imu> {
                     accel_data_rate: None,
                     gyro_temp_data_rate: None,
                     sample_rate_divisor: None,
+                    dmp_rate: None,
                     _mode: PhantomData }
     }
 }
@@ -253,7 +286,41 @@ impl MpuConfig<types::Marg> {
                     accel_data_rate: None,
                     gyro_temp_data_rate: None,
                     sample_rate_divisor: None,
+                    dmp_rate: None,
                     _mode: PhantomData }
+    }
+}
+
+impl MpuConfig<types::Dmp> {
+    /// Creates configuration for [`Dmp`] driver
+    /// (accelerometer + gyroscope + dmp)
+    /// with default [`Accel scale`], [`Gyro scale`], [`Mag scale`],
+    /// [`AccelDataRate`], [`GyroTempDataRate`], [`Dmp rate`]
+    /// and a sample rate of 200Hz.
+    ///
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    /// [`Mag scale`]: ./enum.MagScale.html
+    /// [`AccelDataRate`]: ./enum.AccelDataRate.html
+    /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
+    /// [`Dmp rate`]: ./enum.DmpRate.html
+    pub fn dmp() -> Self {
+        MpuConfig { gyro_scale: None,
+                    accel_scale: None,
+                    mag_scale: None,
+                    accel_data_rate: None,
+                    gyro_temp_data_rate: None,
+                    sample_rate_divisor: Some(200),
+                    dmp_rate: None,
+                    _mode: PhantomData }
+    }
+
+    /// Sets dmp data output rate ([`Dmp rate`])
+    ///
+    /// [`Dmp rate`]: ./enum.DmpRate.html
+    pub fn dmp_rate(&mut self, rate: DmpRate) -> &mut Self {
+        self.dmp_rate = Some(rate);
+        self
     }
 }
 
