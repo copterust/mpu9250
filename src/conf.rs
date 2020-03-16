@@ -72,8 +72,9 @@ impl Default for AccelDataRate {
 impl AccelDataRate {
     pub(crate) fn accel_config_bits(&self) -> u8 {
         match self {
-            AccelDataRate::FChoice0 => 0b00010000,
-            AccelDataRate::DlpfConf(dlpf) => 0b00000000 | (*dlpf as u8),
+            AccelDataRate::FChoice0 => 0b0000_1000,
+            // 0x40 for 1024 bit fifo
+            AccelDataRate::DlpfConf(dlpf) => 0b0100_0000 | (*dlpf as u8),
         }
     }
 }
@@ -127,11 +128,11 @@ pub enum GyroScale {
     /// +250 dps
     _250DPS = 0,
     /// +500 dps
-    _500DPS,
+    _500DPS = 1,
     /// +1000 dps
-    _1000DPS,
+    _1000DPS = 2,
     /// +2000 dps
-    _2000DPS,
+    _2000DPS = 3,
 }
 impl GyroScale {
     pub(crate) fn resolution(&self) -> f32 {
@@ -156,11 +157,11 @@ pub enum AccelScale {
     /// +2g
     _2G = 0,
     /// +4g
-    _4G,
+    _4G = 1,
     /// +8g
-    _8G,
+    _8G = 2,
     /// +16g
-    _16G,
+    _16G = 3,
 }
 impl AccelScale {
     pub(crate) fn resolution(&self) -> f32 {
@@ -228,7 +229,7 @@ pub enum DmpRate {
 }
 impl Default for DmpRate {
     fn default() -> Self {
-        DmpRate::_200Hz
+        DmpRate::_100Hz
     }
 }
 
@@ -294,7 +295,7 @@ impl MpuConfig<types::Marg> {
 impl MpuConfig<types::Dmp> {
     /// Creates configuration for [`Dmp`] driver
     /// (accelerometer + gyroscope + dmp)
-    /// with default [`Accel scale`], [`Gyro scale`], [`Mag scale`],
+    /// with recommended [`Accel scale`], [`Gyro scale`], [`Mag scale`],
     /// [`AccelDataRate`], [`GyroTempDataRate`], [`Dmp rate`]
     /// and a sample rate of 200Hz.
     ///
@@ -305,12 +306,13 @@ impl MpuConfig<types::Dmp> {
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     /// [`Dmp rate`]: ./enum.DmpRate.html
     pub fn dmp() -> Self {
-        MpuConfig { gyro_scale: None,
-                    accel_scale: None,
+        MpuConfig { gyro_scale: Some(GyroScale::_2000DPS),
+                    accel_scale: Some(AccelScale::_8G),
                     mag_scale: None,
-                    accel_data_rate: None,
-                    gyro_temp_data_rate: None,
-                    sample_rate_divisor: Some(200),
+                    accel_data_rate: Some(AccelDataRate::DlpfConf(Dlpf::_1)),
+                    gyro_temp_data_rate:
+                        Some(GyroTempDataRate::DlpfConf(Dlpf::_1)),
+                    sample_rate_divisor: Some(4),
                     dmp_rate: None,
                     _mode: PhantomData }
     }

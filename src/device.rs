@@ -36,7 +36,7 @@ pub trait Device: Releasable {
     /// Write the provided value to register
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error>;
 
-    /// Write the provided data block to register
+    /// Write the provided data block (up to 16 bytes) to register
     fn write_many(&mut self,
                   reg: Register,
                   buffer: &[u8])
@@ -100,6 +100,8 @@ pub enum SpiError<E, E2> {
     BusError(E),
     /// NCS error
     NCSError(E2),
+    /// Write many Error
+    WriteManyError,
 }
 
 impl<E, E2> core::convert::From<E> for SpiError<E, E2> {
@@ -146,6 +148,9 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
                   reg: Register,
                   buffer: &[u8])
                   -> Result<(), Self::Error> {
+        if buffer.len() > 16 {
+            return Err(Self::Error::WriteManyError);
+        }
         self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
         for val in buffer {
             self.spi.write(&[reg.write_address(), *val])?;
@@ -233,6 +238,21 @@ impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
     }
 }
 
+/// I2C Error
+#[derive(Debug, Copy, Clone)]
+pub enum I2CError<E> {
+    /// Bus io error
+    BusError(E),
+    /// Write many Error
+    WriteManyError,
+}
+
+impl<E> core::convert::From<E> for I2CError<E> {
+    fn from(error: E) -> Self {
+        I2CError::BusError(error)
+    }
+}
+
 /// An I2C device. Use I2CDevice when the
 /// MPU9250 is connected via I2C
 pub struct I2cDevice<I2C> {
@@ -267,7 +287,7 @@ impl<E, I2C> Device for I2cDevice<I2C>
               + i2c::Write<Error = E>
               + i2c::WriteRead<Error = E>
 {
-    type Error = E;
+    type Error = I2CError<E>;
 
     fn read_many(&mut self,
                  reg: Register,
@@ -279,23 +299,25 @@ impl<E, I2C> Device for I2cDevice<I2C>
 
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
         let buff: [u8; 2] = [reg as u8, val];
-        self.i2c.write(MPU_I2C_ADDR, &buff)
+        self.i2c.write(MPU_I2C_ADDR, &buff)?;
+        Ok(())
     }
 
     fn write_many(&mut self,
                   reg: Register,
                   buffer: &[u8])
                   -> Result<(), Self::Error> {
+        let size = if buffer.len() <= 16 {
+            buffer.len()
+        } else {
+            return Err(Self::Error::WriteManyError);
+        };
         let mut message: [u8; 17] = [0; 17];
-        for (i, el) in buffer.iter().enumerate() {
-            message[i + 1] = *el;
-            if i > 16 {
-                // TODO handle error here
-                break;
-            }
-        }
+        let message = &mut message[0..size + 1];
         message[0] = reg as u8;
-        self.i2c.write(MPU_I2C_ADDR, &message)
+        message[1..].copy_from_slice(&buffer[0..size]);
+        self.i2c.write(MPU_I2C_ADDR, message)?;
+        Ok(())
     }
 }
 
@@ -304,7 +326,7 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
               + i2c::Write<Error = E>
               + i2c::WriteRead<Error = E>
 {
-    type Error = E;
+    type Error = I2CError<E>;
 
     fn init<D: DelayMs<u8>>(&mut self,
                             delay: &mut D)
@@ -338,7 +360,8 @@ impl<I2C, E> AK8963 for I2cDevice<I2C>
              value: u8)
              -> Result<(), Self::Error> {
         let buff: [u8; 2] = [reg.addr(), value];
-        self.i2c.write(ak8963::I2C_ADDRESS, &buff)
+        self.i2c.write(ak8963::I2C_ADDRESS, &buff)?;
+        Ok(())
     }
 
     fn read_xyz(&mut self, buffer: &mut [u8; 7]) -> Result<(), Self::Error> {
