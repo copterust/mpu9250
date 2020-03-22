@@ -139,6 +139,10 @@ pub enum Error<E> {
     DmpWrite,
     /// DMP firmware loading error
     DmpFirmware,
+    /// DMP data are not ready yet
+    DmpDataNotReady,
+    /// DMP data do not correspond to the expected format
+    DmpDataInvalid,
 }
 
 impl<E> core::convert::From<E> for Error<E> {
@@ -1060,6 +1064,50 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         Ok(())
     }
+
+    /// Read quaternion
+    pub fn quaternion<T>(&mut self) -> Result<T, Error<E>>
+        where T: From<[f64; 4]>
+    {
+        let mut buffer: [u8; 29] = [0; 29];
+        let read = self.read_fifo(&mut buffer)?;
+        if read == -28 {
+            return Err(Error::DmpDataNotReady);
+        } else if read != 0 {
+            return Err(Error::DmpDataInvalid);
+        }
+
+        let quat = self.to_quaternion(&buffer);
+
+        Ok(quat.into())
+    }
+
+    fn to_quaternion(&self, buffer: &[u8]) -> [f64; 4] {
+        let quat: [i32; 4] = [(buffer[1] as i32) << 24
+                              | (buffer[2] as i32) << 16
+                              | (buffer[3] as i32) << 8
+                              | buffer[4] as i32,
+                              (buffer[5] as i32) << 24
+                              | (buffer[6] as i32) << 16
+                              | (buffer[7] as i32) << 8
+                              | buffer[8] as i32,
+                              (buffer[9] as i32) << 24
+                              | (buffer[10] as i32) << 16
+                              | (buffer[11] as i32) << 8
+                              | buffer[12] as i32,
+                              (buffer[13] as i32) << 24
+                              | (buffer[14] as i32) << 16
+                              | (buffer[15] as i32) << 8
+                              | buffer[16] as i32];
+        let sum =
+            quat.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>().sqrt();
+
+        let quat: [f64; 4] = [f64::from(quat[0]) / sum,
+                              f64::from(quat[1]) / sum,
+                              f64::from(quat[2]) / sum,
+                              f64::from(quat[3]) / sum];
+        quat
+    }
 }
 
 // Any device, any mode
@@ -1210,10 +1258,13 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let mut buffer: [u8; 3] = [0; 3];
         self.dev.read_many(Register::FIFO_COUNT_H, &mut buffer)?;
         let count = (buffer[1] as usize) << 8 | buffer[2] as usize;
-        let read = if data.len() - 1 > count {
+        if count == 0 {
+            return Ok(-(data.len() as isize) + 1);
+        }
+        let read = if data.len() > count + 1 {
             count + 1
         } else {
-            data.len() - 1
+            data.len()
         };
         self.dev.read_many(Register::FIFO_RW, &mut data[..read])?;
         Ok(count as isize - data.len() as isize + 1)
