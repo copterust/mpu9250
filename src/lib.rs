@@ -62,6 +62,12 @@ mod conf;
 mod device;
 mod types;
 
+#[cfg(feature = "dmp_firmware")]
+mod dmp_firmware;
+
+#[cfg(feature = "dmp_firmware")]
+pub use dmp_firmware::DMP_FIRMWARE;
+
 use ak8963::AK8963;
 
 use core::marker::PhantomData;
