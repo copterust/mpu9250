@@ -1009,6 +1009,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     fn set_dmp_feature<D>(&mut self, delay: &mut D) -> Result<(), Error<E>>
         where D: DelayMs<u8>
     {
+        let self_dmp_features: DmpFeature = Default::default();
         const GYRO_SF: [u8; 4] = [(46_850_825 >> 24) as u8,
                                   (46_850_825 >> 16) as u8,
                                   (46_850_825 >> 8) as u8,
@@ -1018,14 +1019,12 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         const CFG_15: u16 = 2727;
         let mut features = [0xa3 as u8; 10];
-        if true {
-            // dmp::DMP_FEATURE_SEND_RAW_ACCEL {
+        if self_dmp_features.raw_accel {
             features[1] = 0xc0;
             features[2] = 0xc8;
             features[3] = 0xc2;
         }
-        if true {
-            // dmp::DMP_FEATURE_SEND_RAW_ACCEL {
+        if self_dmp_features.raw_gyro {
             features[4] = 0xc4;
             features[5] = 0xcc;
             features[6] = 0xc6;
@@ -1033,7 +1032,11 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.write_mem(CFG_15, &features)?;
 
         const CFG_27: u16 = 2742;
-        self.write_mem(CFG_27, &[0xd8])?; // dont send gesture data. 0x20 to send
+        if self_dmp_features.tap | self_dmp_features.android_orient {
+            self.write_mem(CFG_27, &[0x20])?;
+        } else {
+            self.write_mem(CFG_27, &[0xd8])?;
+        }
 
         // disable gyroscope auto calibration
         const CFG_MOTION_BIAS: u16 = 1208;
@@ -1041,30 +1044,46 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7];
         self.write_mem(CFG_MOTION_BIAS, &gyro_auto_calibrate)?;
 
-        const CFG_GYRO_RAW_DATA: u16 = 2722;
-        let conf = if false {
-            // dmp::DMP_FEATURE_SEND_ANY_GYRO {
-            [0xb2 as u8, 0x8b, 0xb6, 0x9b]
-        } else {
-            [0xb0, 0x80, 0xb4, 0x90]
-        };
-        self.write_mem(CFG_GYRO_RAW_DATA, &conf)?;
+        if self_dmp_features.raw_gyro {
+            const CFG_GYRO_RAW_DATA: u16 = 2722;
+            let conf = if false {
+                // send cal gyro?
+                [0xb2, 0x8b, 0xb6, 0x9b]
+            } else {
+                // do not send cal gyro
+                [0xb0, 0x80, 0xb4, 0x90]
+            };
+            self.write_mem(CFG_GYRO_RAW_DATA, &conf)?;
+        }
 
-        // disable tap
         const CFG_20: u16 = 2224;
-        self.write_mem(CFG_20, &[0xd8])?;
+        if self_dmp_features.tap {
+            self.write_mem(CFG_20, &[0xF8])?;
+        // TODO handle tap
+        } else {
+            self.write_mem(CFG_20, &[0xd8])?;
+        }
 
-        // disable android orient
         const CFG_ANDROID_ORIENT: u16 = 1853;
-        self.write_mem(CFG_ANDROID_ORIENT, &[0xd8])?;
+        if self_dmp_features.android_orient {
+            self.write_mem(CFG_ANDROID_ORIENT, &[0xd9])?;
+        } else {
+            self.write_mem(CFG_ANDROID_ORIENT, &[0xd8])?;
+        }
 
-        //disable lp quat
         const CFG_LP_QUAT: u16 = 2712;
-        self.write_mem(CFG_LP_QUAT, &[0x8b, 0x8b, 0x8b, 0x8b])?;
+        if self_dmp_features.quat {
+            self.write_mem(CFG_LP_QUAT, &[0xc0, 0xc2, 0xc4, 0xc6])?;
+        } else {
+            self.write_mem(CFG_LP_QUAT, &[0x8b, 0x8b, 0x8b, 0x8b])?;
+        }
 
-        //enable 6lpquat
         const CFG_8: u16 = 2718;
-        self.write_mem(CFG_8, &[0x20, 0x28, 0x30, 0x38])?;
+        if self_dmp_features.quat6 {
+            self.write_mem(CFG_8, &[0x20, 0x28, 0x30, 0x38])?;
+        } else {
+            self.write_mem(CFG_8, &[0xa3, 0xa3, 0xa3, 0xa3])?;
+        }
 
         self.reset_fifo(delay)?;
 

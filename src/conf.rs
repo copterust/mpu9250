@@ -302,6 +302,33 @@ impl Default for Orientation {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+/// Dmp data output rate
+pub struct DmpFeature {
+    /// DMP output raw gyro measurement
+    pub raw_gyro: bool,
+    /// DMP output raw accel measurement
+    pub raw_accel: bool,
+    /// DMP output tap motions detection
+    pub tap: bool,
+    /// DMP output orientation motions detection
+    pub android_orient: bool,
+    /// DMP output quaternion based on accelrometer and gyroscope
+    pub quat6: bool,
+    /// DMP output quaternion based on gyroscope only
+    pub quat: bool,
+}
+impl Default for DmpFeature {
+    fn default() -> Self {
+        DmpFeature { raw_gyro: true,
+                     raw_accel: true,
+                     tap: false,
+                     android_orient: false,
+                     quat6: true,
+                     quat: false }
+    }
+}
+
 /// Configuration of MPU9250
 #[derive(Copy, Clone, Debug)]
 pub struct MpuConfig<MODE> {
