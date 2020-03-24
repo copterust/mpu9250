@@ -919,15 +919,15 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.load_firmware(firmware)?;
 
         // load orientation
-        // TODO add better documentation and support
+        let orientation: Orientation = Default::default();
         const FCFG_1: u16 = 1062;
         const FCFG_2: u16 = 1066;
         const FCFG_3: u16 = 1088;
         const FCFG_7: u16 = 1073;
-        self.write_mem(FCFG_1, &[0x4c, 0xcd, 0x6c])?;
-        self.write_mem(FCFG_2, &[0x0c, 0xc9, 0x2c, 0x97, 0x97, 0x97])?;
-        self.write_mem(FCFG_3, &[0x36, 0x56, 0x76])?;
-        self.write_mem(FCFG_7, &[0x26, 0x46, 0x66])?;
+        self.write_mem(FCFG_1, &orientation.gyro_axes())?;
+        self.write_mem(FCFG_2, &orientation.accel_axes())?;
+        self.write_mem(FCFG_3, &orientation.gyro_signs())?;
+        self.write_mem(FCFG_7, &orientation.accel_signs())?;
 
         // set dmp features
         self.set_dmp_feature(delay)?;

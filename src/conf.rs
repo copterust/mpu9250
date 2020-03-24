@@ -233,6 +233,75 @@ impl Default for DmpRate {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+/// DMP base orienatation
+pub enum Orientation {
+    /// Z axe pointing up
+    ZUp = 0x088,
+    /// Z axe pointing down
+    ZDown = 0x18c,
+    /// X axe pointing up
+    XUp = 0x00e,
+    /// X axe pointing down
+    XDown = 0x10a,
+    /// Y axe pointing up
+    YUp = 0x070,
+    /// Y axe pointing down
+    YDown = 0x150,
+    /// X pointing forward
+    XForward = 0x085,
+    /// X pointing forward
+    XBackward = 0x0a1,
+}
+impl Orientation {
+    pub(crate) fn gyro_axes(&self) -> [u8; 3] {
+        const AXES: [u8; 3] = [0x4c, 0xcd, 0x6c];
+        [AXES[*self as usize & 3],
+         AXES[(*self as usize >> 3) & 3],
+         AXES[(*self as usize >> 6) & 3]]
+    }
+
+    pub(crate) fn accel_axes(&self) -> [u8; 3] {
+        const AXES: [u8; 3] = [0x0c, 0xc9, 0x2c];
+        [AXES[*self as usize & 3],
+         AXES[(*self as usize >> 3) & 3],
+         AXES[(*self as usize >> 6) & 3]]
+    }
+
+    pub(crate) fn gyro_signs(&self) -> [u8; 3] {
+        let mut sign: [u8; 3] = [0x36, 0x56, 0x76];
+        if *self as u16 & 0x002 != 0 {
+            sign[0] |= 1;
+        }
+        if *self as u16 & 0x020 != 0 {
+            sign[1] |= 1;
+        }
+        if *self as u16 & 0x100 != 0 {
+            sign[2] |= 1;
+        }
+        sign
+    }
+
+    pub(crate) fn accel_signs(&self) -> [u8; 3] {
+        let mut sign: [u8; 3] = [0x26, 0x46, 0x66];
+        if *self as u16 & 0x002 != 0 {
+            sign[0] |= 1;
+        }
+        if *self as u16 & 0x020 != 0 {
+            sign[1] |= 1;
+        }
+        if *self as u16 & 0x100 != 0 {
+            sign[2] |= 1;
+        }
+        sign
+    }
+}
+impl Default for Orientation {
+    fn default() -> Self {
+        Orientation::ZUp
+    }
+}
+
 /// Configuration of MPU9250
 #[derive(Copy, Clone, Debug)]
 pub struct MpuConfig<MODE> {
