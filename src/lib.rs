@@ -120,7 +120,8 @@ pub struct Mpu9250<DEV, MODE> {
     gyro_temp_data_rate: GyroTempDataRate,
     accel_data_rate: AccelDataRate,
     sample_rate_divisor: Option<u8>,
-    dmp_rate: Option<DmpRate>,
+    dmp_configuration: Option<DmpConfiguration>,
+    packet_size: usize,
     // mode
     _mode: PhantomData<MODE>,
 }
@@ -558,7 +559,8 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
                       gyro_temp_data_rate: config.gyro_temp_data_rate
                                                  .unwrap_or_default(),
                       sample_rate_divisor: config.sample_rate_divisor,
-                      dmp_rate: config.dmp_rate,
+                      dmp_configuration: config.dmp_configuration,
+                      packet_size: 0,
                       _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
         let wai = mpu9250.who_am_i()?;
@@ -659,7 +661,8 @@ impl<E, DEV> Mpu9250<DEV, Marg>
                       gyro_temp_data_rate: config.gyro_temp_data_rate
                                                  .unwrap_or_default(),
                       sample_rate_divisor: config.sample_rate_divisor,
-                      dmp_rate: config.dmp_rate,
+                      dmp_configuration: config.dmp_configuration,
+                      packet_size: 0,
                       _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
         let wai = mpu9250.who_am_i()?;
@@ -884,8 +887,11 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                                 .unwrap_or(GyroTempDataRate::DlpfConf(Dlpf::_1)),
                       sample_rate_divisor: config.sample_rate_divisor
                                                  .or(Some(4)),
-                      dmp_rate: config.dmp_rate
-                                      .or_else(|| Some(DmpRate::default())),
+                      dmp_configuration: config.dmp_configuration,
+                      packet_size: config.dmp_configuration
+                                         .unwrap_or_default()
+                                         .features
+                                         .packet_size(),
                       _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
         mpu9250.init_dmp(delay, firmware)?;
@@ -899,6 +905,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                    -> Result<(), Error<E>>
         where D: DelayMs<u8>
     {
+        let conf = self.dmp_configuration.unwrap_or_default();
         // disable i2c master mode and enable fifo
         const FIFO_EN: u8 = 1 << 6;
         self.dev.write(Register::USER_CTRL, FIFO_EN)?;
@@ -919,21 +926,20 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.load_firmware(firmware)?;
 
         // load orientation
-        let orientation: Orientation = Default::default();
         const FCFG_1: u16 = 1062;
         const FCFG_2: u16 = 1066;
         const FCFG_3: u16 = 1088;
         const FCFG_7: u16 = 1073;
-        self.write_mem(FCFG_1, &orientation.gyro_axes())?;
-        self.write_mem(FCFG_2, &orientation.accel_axes())?;
-        self.write_mem(FCFG_3, &orientation.gyro_signs())?;
-        self.write_mem(FCFG_7, &orientation.accel_signs())?;
+        self.write_mem(FCFG_1, &conf.orientation.gyro_axes())?;
+        self.write_mem(FCFG_2, &conf.orientation.accel_axes())?;
+        self.write_mem(FCFG_3, &conf.orientation.gyro_signs())?;
+        self.write_mem(FCFG_7, &conf.orientation.accel_signs())?;
 
         // set dmp features
         self.set_dmp_feature(delay)?;
 
         const D_0_22: u16 = 534;
-        let div = [0, self.dmp_rate.unwrap_or_default() as u8];
+        let div = [0, conf.rate as u8];
         self.write_mem(D_0_22, &div)?;
 
         const CFG_6: u16 = 2753;
@@ -1009,7 +1015,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     fn set_dmp_feature<D>(&mut self, delay: &mut D) -> Result<(), Error<E>>
         where D: DelayMs<u8>
     {
-        let self_dmp_features: DmpFeature = Default::default();
+        let features = self.dmp_configuration.unwrap_or_default().features;
         const GYRO_SF: [u8; 4] = [(46_850_825 >> 24) as u8,
                                   (46_850_825 >> 16) as u8,
                                   (46_850_825 >> 8) as u8,
@@ -1018,21 +1024,21 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.write_mem(D_0_104, &GYRO_SF)?;
 
         const CFG_15: u16 = 2727;
-        let mut features = [0xa3 as u8; 10];
-        if self_dmp_features.raw_accel {
-            features[1] = 0xc0;
-            features[2] = 0xc8;
-            features[3] = 0xc2;
+        let mut conf = [0xa3 as u8; 10];
+        if features.raw_accel {
+            conf[1] = 0xc0;
+            conf[2] = 0xc8;
+            conf[3] = 0xc2;
         }
-        if self_dmp_features.raw_gyro {
-            features[4] = 0xc4;
-            features[5] = 0xcc;
-            features[6] = 0xc6;
+        if features.raw_gyro {
+            conf[4] = 0xc4;
+            conf[5] = 0xcc;
+            conf[6] = 0xc6;
         }
-        self.write_mem(CFG_15, &features)?;
+        self.write_mem(CFG_15, &conf)?;
 
         const CFG_27: u16 = 2742;
-        if self_dmp_features.tap | self_dmp_features.android_orient {
+        if features.tap | features.android_orient {
             self.write_mem(CFG_27, &[0x20])?;
         } else {
             self.write_mem(CFG_27, &[0xd8])?;
@@ -1044,7 +1050,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7];
         self.write_mem(CFG_MOTION_BIAS, &gyro_auto_calibrate)?;
 
-        if self_dmp_features.raw_gyro {
+        if features.raw_gyro {
             const CFG_GYRO_RAW_DATA: u16 = 2722;
             let conf = if false {
                 // send cal gyro?
@@ -1057,7 +1063,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         const CFG_20: u16 = 2224;
-        if self_dmp_features.tap {
+        if features.tap {
             self.write_mem(CFG_20, &[0xF8])?;
         // TODO handle tap
         } else {
@@ -1065,21 +1071,21 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         const CFG_ANDROID_ORIENT: u16 = 1853;
-        if self_dmp_features.android_orient {
+        if features.android_orient {
             self.write_mem(CFG_ANDROID_ORIENT, &[0xd9])?;
         } else {
             self.write_mem(CFG_ANDROID_ORIENT, &[0xd8])?;
         }
 
         const CFG_LP_QUAT: u16 = 2712;
-        if self_dmp_features.quat {
+        if features.quat {
             self.write_mem(CFG_LP_QUAT, &[0xc0, 0xc2, 0xc4, 0xc6])?;
         } else {
             self.write_mem(CFG_LP_QUAT, &[0x8b, 0x8b, 0x8b, 0x8b])?;
         }
 
         const CFG_8: u16 = 2718;
-        if self_dmp_features.quat6 {
+        if features.quat6 {
             self.write_mem(CFG_8, &[0x20, 0x28, 0x30, 0x38])?;
         } else {
             self.write_mem(CFG_8, &[0xa3, 0xa3, 0xa3, 0xa3])?;
@@ -1094,9 +1100,9 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     pub fn quaternion<T>(&mut self) -> Result<T, Error<E>>
         where T: From<[f64; 4]>
     {
-        let mut buffer: [u8; 29] = [0; 29];
-        let read = self.read_fifo(&mut buffer)?;
-        if read == -28 {
+        let mut buffer: [u8; 33] = [0; 33];
+        let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
+        if read == -(self.packet_size as isize) {
             return Err(Error::DmpDataNotReady);
         } else if read != 0 {
             return Err(Error::DmpDataInvalid);
@@ -1183,7 +1189,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let accel_data_rate = self.accel_data_rate;
         let gyro_temp_data_rate = self.gyro_temp_data_rate;
         let sample_rate_divisor = self.sample_rate_divisor;
-        let dmp_rate = self.dmp_rate;
+        let dmp_configuration = self.dmp_configuration;
+        let packet_size = self.packet_size;
         let _mode = self._mode;
         if let Some(new_dev) = f(self.dev) {
             Ok(Mpu9250 { dev: new_dev,
@@ -1195,7 +1202,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
                          accel_data_rate,
                          gyro_temp_data_rate,
                          sample_rate_divisor,
-                         dmp_rate,
+                         dmp_configuration,
+                         packet_size,
                          _mode })
         } else {
             Err(Error::ReInitError)
