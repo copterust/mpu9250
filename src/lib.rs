@@ -912,15 +912,10 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         delay.delay_ms(3);
 
         // enable i2c bypass
-        const LATCH_INT_EN: u8 = 1 << 5;
-        const INT_ANYRD_CLEAR: u8 = 1 << 4;
-        const ACTL_ACTIVE_LOW: u8 = 1 << 7;
-        const BYPASS_EN: u8 = 1 << 1;
-        self.dev.write(Register::INT_PIN_CFG,
-                        LATCH_INT_EN
-                        | INT_ANYRD_CLEAR
-                        | ACTL_ACTIVE_LOW
-                        | BYPASS_EN)?;
+        self.interrupt_config(InterruptConfig::LATCH_INT_EN
+                              | InterruptConfig::INT_ANYRD_CLEAR
+                              | InterruptConfig::ACL
+                              | InterruptConfig::BYPASS_EN)?;
 
         // load firmware
         self.load_firmware(firmware)?;
@@ -954,11 +949,10 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         // enable i2c bypass
         self.dev.write(Register::USER_CTRL, FIFO_EN)?;
         delay.delay_ms(10);
-        self.dev.write(Register::INT_PIN_CFG,
-                        LATCH_INT_EN
-                        | INT_ANYRD_CLEAR
-                        | ACTL_ACTIVE_LOW
-                        | BYPASS_EN)?;
+        self.interrupt_config(InterruptConfig::LATCH_INT_EN
+                              | InterruptConfig::INT_ANYRD_CLEAR
+                              | InterruptConfig::ACL
+                              | InterruptConfig::BYPASS_EN)?;
 
         self.dev.write(Register::FIFO_EN, 0)?;
         self.dev.write(Register::INT_ENABLE, 0x02)?;
