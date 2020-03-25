@@ -887,7 +887,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                                 .unwrap_or(GyroTempDataRate::DlpfConf(Dlpf::_1)),
                       sample_rate_divisor: config.sample_rate_divisor
                                                  .or(Some(4)),
-                      dmp_configuration: config.dmp_configuration,
+                      dmp_configuration: Some(config.dmp_configuration
+                                                    .unwrap_or_default()),
                       packet_size: config.dmp_configuration
                                          .unwrap_or_default()
                                          .features
@@ -1094,6 +1095,10 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     pub fn quaternion<T>(&mut self) -> Result<T, Error<E>>
         where T: From<[f64; 4]>
     {
+        let features = self.dmp_configuration.unwrap().features;
+        if !features.quat && !features.quat6 {
+            return Err(Error::DmpDataInvalid);
+        }
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
         if read == -(self.packet_size as isize) {
@@ -1105,6 +1110,59 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         let quat = self.to_quaternion(&buffer);
 
         Ok(quat.into())
+    }
+
+    /// Read Gyro from dmp
+    pub fn dmp_gyro<T>(&mut self) -> Result<T, Error<E>>
+        where T: From<[f32; 3]>
+    {
+        let features = self.dmp_configuration.unwrap().features;
+        if !features.raw_gyro {
+            return Err(Error::DmpDataInvalid);
+        }
+        let mut buffer: [u8; 33] = [0; 33];
+        let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
+        if read == -(self.packet_size as isize) {
+            return Err(Error::DmpDataNotReady);
+        } else if read != 0 {
+            return Err(Error::DmpDataInvalid);
+        }
+
+        let mut offset = if features.quat | features.quat6 {
+            16
+        } else {
+            0
+        };
+        if features.raw_accel {
+            offset += 6
+        };
+
+        Ok(self.scale_gyro(&buffer, offset).into())
+    }
+
+    /// Read Gyro from dmp
+    pub fn dmp_accel<T>(&mut self) -> Result<T, Error<E>>
+        where T: From<[f32; 3]>
+    {
+        let features = self.dmp_configuration.unwrap().features;
+        if !features.raw_accel {
+            return Err(Error::DmpDataInvalid);
+        }
+        let mut buffer: [u8; 33] = [0; 33];
+        let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
+        if read == -(self.packet_size as isize) {
+            return Err(Error::DmpDataNotReady);
+        } else if read != 0 {
+            return Err(Error::DmpDataInvalid);
+        }
+
+        let offset = if features.quat | features.quat6 {
+            16
+        } else {
+            0
+        };
+
+        Ok(self.scale_accel(&buffer, offset).into())
     }
 
     fn to_quaternion(&self, buffer: &[u8]) -> [f64; 4] {
