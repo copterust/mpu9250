@@ -457,7 +457,7 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`Dmp rate`]: ./enum.DmpRate.html
     pub fn dmp_rate(&mut self, rate: DmpRate) -> &mut Self {
-        match self.dmp_configuration {
+        match self.dmp_configuration.as_mut() {
             Some(mut x) => x.rate = rate,
             None => {
                 self.dmp_configuration =
@@ -472,7 +472,7 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`orientation`]: ./enum.Orientation.html
     pub fn dmp_orientation(&mut self, orientation: Orientation) -> &mut Self {
-        match self.dmp_configuration {
+        match self.dmp_configuration.as_mut() {
             Some(mut x) => x.orientation = orientation,
             None => {
                 self.dmp_configuration =
@@ -487,7 +487,7 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
     pub fn dmp_features_raw_gyro(&mut self, feature: bool) -> &mut Self {
-        match self.dmp_configuration {
+        match self.dmp_configuration.as_mut() {
             Some(mut x) => x.features.raw_gyro = feature,
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
@@ -502,7 +502,7 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
     pub fn dmp_features_raw_accel(&mut self, feature: bool) -> &mut Self {
-        match self.dmp_configuration {
+        match self.dmp_configuration.as_mut() {
             Some(mut x) => x.features.raw_accel = feature,
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
@@ -517,8 +517,8 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
     pub fn dmp_features_tap(&mut self, feature: bool) -> &mut Self {
-        match self.dmp_configuration {
-            Some(mut x) => x.features.raw_gyro = feature,
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.tap = feature,
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
                                             DmpFeatures { tap: feature,
@@ -532,8 +532,8 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
     pub fn dmp_features_quat(&mut self, feature: bool) -> &mut Self {
-        match self.dmp_configuration {
-            Some(mut x) => x.features.raw_gyro = feature,
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.quat = feature,
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
                                             DmpFeatures { quat: feature,
@@ -547,8 +547,8 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
     pub fn dmp_features_quat6(&mut self, feature: bool) -> &mut Self {
-        match self.dmp_configuration {
-            Some(mut x) => x.features.raw_gyro = feature,
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.quat6 = feature,
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
                                             DmpFeatures { quat6: feature,
@@ -562,8 +562,8 @@ impl MpuConfig<types::Dmp> {
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
     pub fn dmp_features_orientation(&mut self, feature: bool) -> &mut Self {
-        match self.dmp_configuration {
-            Some(mut x) => x.features.raw_gyro = feature,
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.android_orient = feature,
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
                                             DmpFeatures { android_orient:
