@@ -1182,14 +1182,11 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                               | (buffer[14] as i32) << 16
                               | (buffer[15] as i32) << 8
                               | buffer[16] as i32];
-        let sum =
-            quat.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>().sqrt();
 
-        let quat: [f64; 4] = [f64::from(quat[0]) / sum,
-                              f64::from(quat[1]) / sum,
-                              f64::from(quat[2]) / sum,
-                              f64::from(quat[3]) / sum];
-        quat
+        [f64::from(quat[0]),
+         f64::from(quat[1]),
+         f64::from(quat[2]),
+         f64::from(quat[3])]
     }
 }
 
@@ -1277,7 +1274,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
             raw[0] as f32 * scale,
             raw[1] as f32 * scale,
             raw[2] as f32 * scale,
-        ].into()
+        ]
+        .into()
     }
 
     fn scale_temp(&self, buffer: &[u8], offset: usize) -> f32 {
