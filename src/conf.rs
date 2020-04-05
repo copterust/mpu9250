@@ -253,6 +253,7 @@ pub enum Orientation {
     /// X pointing forward
     XBackward = 0x0a1,
 }
+#[cfg(feature = "dmp")]
 impl Orientation {
     pub(crate) fn gyro_axes(&self) -> [u8; 3] {
         const AXES: [u8; 3] = [0x4c, 0xcd, 0x6c];
@@ -319,6 +320,7 @@ pub struct DmpFeatures {
     /// DMP output quaternion based on gyroscope only
     pub quat: bool,
 }
+#[cfg(feature = "dmp")]
 impl DmpFeatures {
     pub(crate) fn packet_size(self) -> usize {
         let mut size = 0;
@@ -424,6 +426,7 @@ impl MpuConfig<types::Marg> {
     }
 }
 
+#[cfg(feature = "dmp")]
 impl MpuConfig<types::Dmp> {
     /// Creates configuration for [`Dmp`] driver
     /// (accelerometer + gyroscope + dmp)

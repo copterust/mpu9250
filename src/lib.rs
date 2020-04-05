@@ -62,10 +62,10 @@ mod conf;
 mod device;
 mod types;
 
-#[cfg(feature = "dmp_firmware")]
+#[cfg(feature = "dmp")]
 mod dmp_firmware;
 
-#[cfg(feature = "dmp_firmware")]
+#[cfg(feature = "dmp")]
 pub use dmp_firmware::DMP_FIRMWARE;
 
 use ak8963::AK8963;
@@ -301,6 +301,7 @@ mod spi_defs {
         }
     }
 
+    #[cfg(feature = "dmp")]
     impl<E, SPI, NCS> Mpu9250<SpiDevice<SPI, NCS>, Dmp>
         where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
               NCS: OutputPin
@@ -476,6 +477,7 @@ mod i2c_defs {
         }
     }
 
+    #[cfg(feature = "dmp")]
     impl<E, I2C> Mpu9250<I2cDevice<I2C>, Dmp>
         where I2C: i2c::Read<Error = E>
                   + i2c::Write<Error = E>
@@ -859,6 +861,7 @@ impl<E, DEV> Mpu9250<DEV, Marg>
 }
 
 // Any device, DMP
+#[cfg(feature = "dmp")]
 impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 {
     /// Private constructor that creates a DMP-based MPU with the

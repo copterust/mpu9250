@@ -9,5 +9,7 @@ pub struct Marg;
 impl MpuMode for Marg {}
 
 /// Accelerometer + Gyroscope + Dmp
+#[cfg(feature = "dmp")]
 pub struct Dmp;
+#[cfg(feature = "dmp")]
 impl MpuMode for Dmp {}
