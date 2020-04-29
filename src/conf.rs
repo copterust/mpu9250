@@ -72,9 +72,9 @@ impl Default for AccelDataRate {
 impl AccelDataRate {
     pub(crate) fn accel_config_bits(&self) -> u8 {
         match self {
-            AccelDataRate::FChoice0 => 0b0000_1000,
+            AccelDataRate::FChoice0 => 0b00001000,
             // 0x40 for 1024 bit fifo
-            AccelDataRate::DlpfConf(dlpf) => 0b0100_0000 | (*dlpf as u8),
+            AccelDataRate::DlpfConf(dlpf) => 0b01000000 | (*dlpf as u8),
         }
     }
 }
@@ -128,11 +128,11 @@ pub enum GyroScale {
     /// +250 dps
     _250DPS = 0,
     /// +500 dps
-    _500DPS = 1,
+    _500DPS,
     /// +1000 dps
-    _1000DPS = 2,
+    _1000DPS,
     /// +2000 dps
-    _2000DPS = 3,
+    _2000DPS,
 }
 impl GyroScale {
     pub(crate) fn resolution(&self) -> f32 {
@@ -157,11 +157,11 @@ pub enum AccelScale {
     /// +2g
     _2G = 0,
     /// +4g
-    _4G = 1,
+    _4G,
     /// +8g
-    _8G = 2,
+    _8G,
     /// +16g
-    _16G = 3,
+    _16G,
 }
 impl AccelScale {
     pub(crate) fn resolution(&self) -> f32 {
