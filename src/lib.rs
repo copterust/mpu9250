@@ -1083,14 +1083,12 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         Ok(())
     }
 
-    /// Read quaternion
-    pub fn quaternion<T>(&mut self) -> Result<T, Error<E>>
-        where T: From<[f64; 4]>
+    /// Read all measurement from DMP
+    pub fn dmp_all<T1, T2>(&mut self) -> Result<DmpMeasurement<T1, T2>, Error<E>>
+        where T1: From<[f32; 3]>, T2: From<[f64; 4]>
     {
         let features = self.dmp_configuration.unwrap().features;
-        if !features.quat && !features.quat6 {
-            return Err(Error::DmpDataInvalid);
-        }
+
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
         if read == -(self.packet_size as isize) {
@@ -1099,62 +1097,25 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             return Err(Error::DmpDataInvalid);
         }
 
-        let quat = self.to_quaternion(&buffer);
-
-        Ok(quat.into())
-    }
-
-    /// Read Gyro from dmp
-    pub fn dmp_gyro<T>(&mut self) -> Result<T, Error<E>>
-        where T: From<[f32; 3]>
-    {
-        let features = self.dmp_configuration.unwrap().features;
-        if !features.raw_gyro {
-            return Err(Error::DmpDataInvalid);
-        }
-        let mut buffer: [u8; 33] = [0; 33];
-        let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
-        if read == -(self.packet_size as isize) {
-            return Err(Error::DmpDataNotReady);
-        } else if read != 0 {
-            return Err(Error::DmpDataInvalid);
-        }
-
-        let mut offset = if features.quat | features.quat6 {
-            16
-        } else {
-            0
+        let mut offset = 0;
+        let mut measures: DmpMeasurement<T1, T2> = DmpMeasurement {
+            quaternion: None,
+            accel: None,
+            gyro: None
         };
+        if features.quat6 || features.quat {
+            measures.quaternion = Some(self.to_quaternion(&buffer).into());
+            offset += 16;
+        }
         if features.raw_accel {
-            offset += 6
-        };
-
-        Ok(self.scale_gyro(&buffer, offset).into())
-    }
-
-    /// Read Gyro from dmp
-    pub fn dmp_accel<T>(&mut self) -> Result<T, Error<E>>
-        where T: From<[f32; 3]>
-    {
-        let features = self.dmp_configuration.unwrap().features;
-        if !features.raw_accel {
-            return Err(Error::DmpDataInvalid);
+            measures.accel = Some(self.scale_accel(&buffer, offset).into());
+            offset += 6;
         }
-        let mut buffer: [u8; 33] = [0; 33];
-        let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
-        if read == -(self.packet_size as isize) {
-            return Err(Error::DmpDataNotReady);
-        } else if read != 0 {
-            return Err(Error::DmpDataInvalid);
+        if features.raw_gyro {
+            measures.gyro = Some(self.scale_gyro(&buffer, offset).into());
+            //offset += 6;
         }
-
-        let offset = if features.quat | features.quat6 {
-            16
-        } else {
-            0
-        };
-
-        Ok(self.scale_accel(&buffer, offset).into())
+        Ok(measures)
     }
 
     fn to_quaternion(&self, buffer: &[u8]) -> [f64; 4] {
@@ -1778,6 +1739,21 @@ pub struct MargMeasurements<T> {
     pub mag: T,
     /// Temperature sensor measurement (C)
     pub temp: f32,
+}
+
+/// DMP measurement scaled with respective scales and converted
+/// to appropriate units. Each measurement will be present only if the corresponding features is
+/// activated in [`dmp features`]
+///
+/// [`dmp features`]: ./struct.DmpFeatures.html
+#[derive(Copy, Clone, Debug)]
+pub struct DmpMeasurement<T1, T2> {
+    /// Raw quaternion
+    pub quaternion: Option<T2>,
+    /// Accelerometer measurements (g)
+    pub accel: Option<T1>,
+    /// Gyroscope measurements (rad/s)
+    pub gyro: Option<T1>,
 }
 
 fn transpose<T, E>(o: Option<Result<T, E>>) -> Result<Option<T>, E> {
