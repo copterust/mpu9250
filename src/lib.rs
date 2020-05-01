@@ -1083,7 +1083,46 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         Ok(())
     }
 
+    /// Reads and returns raw unscaled DMP measurement depending on 
+    /// activated features(LSB).
+    pub fn dmp_unscaled_all<T1, T2>(&mut self) -> Result<UnscaledDmpMeasurement<T1, T2>, Error<E>>
+        where T1: From<[i16; 3]>, T2: From<[i32; 4]>
+    {
+        let features = self.dmp_configuration.unwrap().features;
+
+        let mut buffer: [u8; 33] = [0; 33];
+        let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
+        if read == -(self.packet_size as isize) {
+            return Err(Error::DmpDataNotReady);
+        } else if read != 0 {
+            return Err(Error::DmpDataInvalid);
+        }
+
+        let mut offset = 0;
+        let mut measures: UnscaledDmpMeasurement<T1, T2> = UnscaledDmpMeasurement {
+            quaternion: None,
+            accel: None,
+            gyro: None
+        };
+        if features.quat6 || features.quat {
+            measures.quaternion = Some(self.to_quat(&buffer).into());
+            offset += 16;
+        }
+        if features.raw_accel {
+            measures.accel = Some(self.to_vector(&buffer, offset).into());
+            offset += 6;
+        }
+        if features.raw_gyro {
+            measures.gyro = Some(self.to_vector(&buffer, offset).into());
+            //offset += 6;
+        }
+        Ok(measures)
+    }
+
+
     /// Read all measurement from DMP
+    /// Reads and returns DMP measurement scaled depending on 
+    /// activated features(LSB).
     pub fn dmp_all<T1, T2>(&mut self) -> Result<DmpMeasurement<T1, T2>, Error<E>>
         where T1: From<[f32; 3]>, T2: From<[f64; 4]>
     {
@@ -1104,7 +1143,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             gyro: None
         };
         if features.quat6 || features.quat {
-            measures.quaternion = Some(self.to_quaternion(&buffer).into());
+            measures.quaternion = Some(self.to_norm_quat(&buffer).into());
             offset += 16;
         }
         if features.raw_accel {
@@ -1118,28 +1157,44 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         Ok(measures)
     }
 
-    fn to_quaternion(&self, buffer: &[u8]) -> [f64; 4] {
-        let quat: [i32; 4] = [(buffer[1] as i32) << 24
-                              | (buffer[2] as i32) << 16
-                              | (buffer[3] as i32) << 8
-                              | buffer[4] as i32,
-                              (buffer[5] as i32) << 24
-                              | (buffer[6] as i32) << 16
-                              | (buffer[7] as i32) << 8
-                              | buffer[8] as i32,
-                              (buffer[9] as i32) << 24
-                              | (buffer[10] as i32) << 16
-                              | (buffer[11] as i32) << 8
-                              | buffer[12] as i32,
-                              (buffer[13] as i32) << 24
-                              | (buffer[14] as i32) << 16
-                              | (buffer[15] as i32) << 8
-                              | buffer[16] as i32];
+    /// Parse quaternion from fifo buffer
+    fn to_quat(&self, buffer: &[u8]) -> [i32; 4] {
+        [(buffer[1] as i32) << 24
+            | (buffer[2] as i32) << 16
+            | (buffer[3] as i32) << 8
+            | buffer[4] as i32,
+         (buffer[5] as i32) << 24
+            | (buffer[6] as i32) << 16
+            | (buffer[7] as i32) << 8
+            | buffer[8] as i32,
+         (buffer[9] as i32) << 24
+            | (buffer[10] as i32) << 16
+            | (buffer[11] as i32) << 8
+            | buffer[12] as i32,
+         (buffer[13] as i32) << 24
+            | (buffer[14] as i32) << 16
+            | (buffer[15] as i32) << 8
+            | buffer[16] as i32
+        ]
+    }
 
-        [f64::from(quat[0]),
-         f64::from(quat[1]),
-         f64::from(quat[2]),
-         f64::from(quat[3])]
+    /// Normalized the quaternion
+    fn to_norm_quat(&self, buffer: &[u8]) -> [f64; 4] {
+        let quat = self.to_quat(buffer);
+        //TODO handle this better, here is an ugly map on fixed size array
+        let quat = [
+            f64::from(quat[0]),
+            f64::from(quat[1]),
+            f64::from(quat[2]),
+            f64::from(quat[2])
+        ];
+        let sum = libm::sqrt(quat.iter().map(|x| libm::pow(*x, 2.0)).sum::<f64>());
+        [
+            quat[0] / sum,
+            quat[1] / sum,
+            quat[2] / sum,
+            quat[3] / sum,
+        ]
     }
 }
 
@@ -1742,13 +1797,28 @@ pub struct MargMeasurements<T> {
 }
 
 /// DMP measurement scaled with respective scales and converted
-/// to appropriate units. Each measurement will be present only if the corresponding features is
-/// activated in [`dmp features`]
+/// to appropriate units. Each measurement will be present only
+/// if the corresponding features is activated in [`dmp features`]
+///
+/// [`dmp features`]: ./struct.DmpFeatures.html
+#[derive(Copy, Clone, Debug)]
+pub struct UnscaledDmpMeasurement<T1, T2> {
+    /// raw quaternion (LSB)
+    pub quaternion: Option<T2>,
+    /// Accelerometer measurements (LSB)
+    pub accel: Option<T1>,
+    /// Gyroscope measurements (LSB)
+    pub gyro: Option<T1>,
+}
+
+/// DMP measurement scaled with respective scales and converted
+/// to appropriate units. Each measurement will be present only
+/// if the corresponding features is activated in [`dmp features`]
 ///
 /// [`dmp features`]: ./struct.DmpFeatures.html
 #[derive(Copy, Clone, Debug)]
 pub struct DmpMeasurement<T1, T2> {
-    /// Raw quaternion
+    /// Normalized quaternion
     pub quaternion: Option<T2>,
     /// Accelerometer measurements (g)
     pub accel: Option<T1>,
