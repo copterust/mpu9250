@@ -36,11 +36,11 @@ fn main() {
         loop {
             match event.poll(1000).unwrap() {
                 Some(_) =>
-                    match mpu9250.quaternion::<[f64; 4]>() {
-                        Ok(quat) => {
+                    match mpu9250.dmp_all::<[f32; 3], [f64; 4]>() {
+                        Ok(measure) => {
                             write!(&mut stdout,
-                                "\r{:>6.2} {:>6.2} {:>6.2} {:>6.2}",
-                                quat[0], quat[1], quat[2], quat[3]).unwrap();
+                                "\r{:?}",
+                                measure).unwrap();
                             stdout.flush().unwrap();
                         },
                         Err(Error::DmpDataNotReady) => (),
