@@ -243,7 +243,7 @@ impl<SPI, NCS, E, EO> AK8963 for SpiDevice<SPI, NCS>
 pub enum I2CError<E> {
     /// Bus io error
     BusError(E),
-    /// Write many Error
+    /// Internal WriteMany Error when trying to write more than 16 bytes
     WriteManyError,
 }
 
