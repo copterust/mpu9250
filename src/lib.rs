@@ -573,6 +573,19 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
         }
     }
 
+    /// Init 6DOF Mpu9250
+    pub fn init<D>(&mut self, delay: &mut D,) -> Result<(), Error<E>>
+        where D: DelayMs<u8>
+    {
+        self.init_mpu(delay)?;
+        let wai = self.who_am_i()?;
+        if MpuXDevice::imu_supported(wai) {
+            Ok(())
+        } else {
+            Err(Error::InvalidDevice(wai))
+        }
+    }
+
     /// Configures device using provided [`MpuConfig`].
     pub fn config(&mut self, config: &mut MpuConfig<Imu>) -> Result<(), E> {
         transpose(config.gyro_scale.map(|v| self.gyro_scale(v)))?;
@@ -672,6 +685,23 @@ impl<E, DEV> Mpu9250<DEV, Marg>
             mpu9250.init_ak8963(delay)?;
             mpu9250.check_ak8963_who_am_i()?;
             Ok(mpu9250)
+        } else if wai == MpuXDevice::MPU6500 as u8 {
+            Err(Error::ModeNotSupported(wai))
+        } else {
+            Err(Error::InvalidDevice(wai))
+        }
+    }
+
+    /// Init 9DOF mpu9250
+    pub fn init<D>(&mut self, delay: &mut D) -> Result<(), Error<E>>
+        where D: DelayMs<u8>
+    {
+        self.init_mpu(delay)?;
+        let wai = self.who_am_i()?;
+        if MpuXDevice::marg_supported(wai) {
+            self.init_ak8963(delay)?;
+            self.check_ak8963_who_am_i()?;
+            Ok(())
         } else if wai == MpuXDevice::MPU6500 as u8 {
             Err(Error::ModeNotSupported(wai))
         } else {
@@ -900,6 +930,16 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         mpu9250.init_mpu(delay)?;
         mpu9250.init_dmp(delay, firmware)?;
         Ok(mpu9250)
+    }
+
+    /// Init DMP mpu9250
+    pub fn init<D>(&mut self, delay: &mut D,firmware: &[u8]) -> Result<(), Error<E>>
+        where D: DelayMs<u8>
+    {
+        self.init_mpu(delay)?;
+        self._calibrate_at_rest(delay)?;
+        self.init_dmp(delay, firmware)?;
+        Ok(())
     }
 
     /// Logic to init the dmp
