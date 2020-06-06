@@ -72,8 +72,9 @@ impl Default for AccelDataRate {
 impl AccelDataRate {
     pub(crate) fn accel_config_bits(&self) -> u8 {
         match self {
-            AccelDataRate::FChoice0 => 0b00010000,
-            AccelDataRate::DlpfConf(dlpf) => 0b00000000 | (*dlpf as u8),
+            AccelDataRate::FChoice0 => 0b00001000,
+            // 0x40 for 1024 bit fifo
+            AccelDataRate::DlpfConf(dlpf) => 0b01000000 | (*dlpf as u8),
         }
     }
 }
@@ -201,6 +202,169 @@ impl Default for MagScale {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+/// Dmp data output rate, default 100Hz
+// rate = 200 / div - 1
+pub enum DmpRate {
+    /// Update data at 200Hz
+    _200Hz = 0,
+    /// Update data at 100Hz
+    _100Hz = 1,
+    /// Update data at 50Hz
+    _50Hz = 3,
+    /// Update data at 40Hz
+    _40Hz = 4,
+    /// Update data at 20Hz
+    _25Hz = 8,
+    /// Update data at 25Hz
+    _20Hz = 9,
+    /// Update data at 10Hz
+    _10Hz = 19,
+    /// Update data at 8Hz
+    _8Hz = 24,
+    /// Update data at 5Hz
+    _5Hz = 39,
+    /// Update data at 4Hz
+    _4Hz = 49,
+}
+impl Default for DmpRate {
+    fn default() -> Self {
+        DmpRate::_100Hz
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+/// DMP base orienatation, default Z axe pointing up
+pub enum Orientation {
+    /// Z axe pointing up
+    ZUp = 0x088,
+    /// Z axe pointing down
+    ZDown = 0x18c,
+    /// X axe pointing up
+    XUp = 0x00e,
+    /// X axe pointing down
+    XDown = 0x10a,
+    /// Y axe pointing up
+    YUp = 0x070,
+    /// Y axe pointing down
+    YDown = 0x150,
+    /// X pointing forward
+    XForward = 0x085,
+    /// X pointing forward
+    XBackward = 0x0a1,
+}
+#[cfg(feature = "dmp")]
+impl Orientation {
+    pub(crate) fn gyro_axes(&self) -> [u8; 3] {
+        const AXES: [u8; 3] = [0x4c, 0xcd, 0x6c];
+        [AXES[*self as usize & 3],
+         AXES[(*self as usize >> 3) & 3],
+         AXES[(*self as usize >> 6) & 3]]
+    }
+
+    pub(crate) fn accel_axes(&self) -> [u8; 3] {
+        const AXES: [u8; 3] = [0x0c, 0xc9, 0x2c];
+        [AXES[*self as usize & 3],
+         AXES[(*self as usize >> 3) & 3],
+         AXES[(*self as usize >> 6) & 3]]
+    }
+
+    pub(crate) fn gyro_signs(&self) -> [u8; 3] {
+        let mut sign: [u8; 3] = [0x36, 0x56, 0x76];
+        if *self as u16 & 0x002 != 0 {
+            sign[0] |= 1;
+        }
+        if *self as u16 & 0x020 != 0 {
+            sign[1] |= 1;
+        }
+        if *self as u16 & 0x100 != 0 {
+            sign[2] |= 1;
+        }
+        sign
+    }
+
+    pub(crate) fn accel_signs(&self) -> [u8; 3] {
+        let mut sign: [u8; 3] = [0x26, 0x46, 0x66];
+        if *self as u16 & 0x002 != 0 {
+            sign[0] |= 1;
+        }
+        if *self as u16 & 0x020 != 0 {
+            sign[1] |= 1;
+        }
+        if *self as u16 & 0x100 != 0 {
+            sign[2] |= 1;
+        }
+        sign
+    }
+}
+impl Default for Orientation {
+    fn default() -> Self {
+        Orientation::ZUp
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+/// Dmp features to enable, default with raw gyro and accel and 6 axes
+/// quaternion
+pub struct DmpFeatures {
+    /// DMP output raw gyro measurement
+    pub raw_gyro: bool,
+    /// DMP output raw accel measurement
+    pub raw_accel: bool,
+    /// DMP output tap motions detection
+    pub tap: bool,
+    /// DMP output orientation motions detection
+    pub android_orient: bool,
+    /// DMP output quaternion based on accelrometer and gyroscope
+    pub quat6: bool,
+    /// DMP output quaternion based on gyroscope only
+    pub quat: bool,
+}
+#[cfg(feature = "dmp")]
+impl DmpFeatures {
+    pub(crate) fn packet_size(self) -> usize {
+        let mut size = 0;
+        if self.raw_gyro {
+            size += 6
+        }
+        if self.raw_accel {
+            size += 6
+        }
+        if self.quat | self.quat6 {
+            size += 16
+        }
+        if self.android_orient | self.tap {
+            size += 4
+        }
+        size
+    }
+}
+impl Default for DmpFeatures {
+    fn default() -> Self {
+        DmpFeatures { raw_gyro: true,
+                      raw_accel: true,
+                      tap: false,
+                      android_orient: false,
+                      quat6: true,
+                      quat: false }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+/// Dmp configuration
+pub struct DmpConfiguration {
+    pub(crate) orientation: Orientation,
+    pub(crate) features: DmpFeatures,
+    pub(crate) rate: DmpRate,
+}
+impl Default for DmpConfiguration {
+    fn default() -> Self {
+        DmpConfiguration { orientation: Default::default(),
+                           features: Default::default(),
+                           rate: Default::default() }
+    }
+}
+
 /// Configuration of MPU9250
 #[derive(Copy, Clone, Debug)]
 pub struct MpuConfig<MODE> {
@@ -210,6 +374,7 @@ pub struct MpuConfig<MODE> {
     pub(crate) accel_data_rate: Option<AccelDataRate>,
     pub(crate) gyro_temp_data_rate: Option<GyroTempDataRate>,
     pub(crate) sample_rate_divisor: Option<u8>,
+    pub(crate) dmp_configuration: Option<DmpConfiguration>,
     _mode: PhantomData<MODE>,
 }
 
@@ -219,6 +384,7 @@ impl MpuConfig<types::Imu> {
     /// [`AccelDataRate`], [`GyroTempDataRate`],
     /// and no sample rate divisor.
     ///
+    /// [`Imu`]: ./struct.Imu.html
     /// [`Accel scale`]: ./enum.AccelScale.html
     /// [`Gyro scale`]: ./enum.GyroScale.html
     /// [`AccelDataRate`]: ./enum.AccelDataRate.html
@@ -230,6 +396,7 @@ impl MpuConfig<types::Imu> {
                     accel_data_rate: None,
                     gyro_temp_data_rate: None,
                     sample_rate_divisor: None,
+                    dmp_configuration: None,
                     _mode: PhantomData }
     }
 }
@@ -241,6 +408,7 @@ impl MpuConfig<types::Marg> {
     /// [`AccelDataRate`], [`GyroTempDataRate`],
     /// and no sample rate divisor.
     ///
+    /// [`Marg`]: ./struct.Marg.html
     /// [`Accel scale`]: ./enum.AccelScale.html
     /// [`Gyro scale`]: ./enum.GyroScale.html
     /// [`Mag scale`]: ./enum.MagScale.html
@@ -253,7 +421,160 @@ impl MpuConfig<types::Marg> {
                     accel_data_rate: None,
                     gyro_temp_data_rate: None,
                     sample_rate_divisor: None,
+                    dmp_configuration: None,
                     _mode: PhantomData }
+    }
+}
+
+#[cfg(feature = "dmp")]
+impl MpuConfig<types::Dmp> {
+    /// Creates configuration for [`Dmp`] driver
+    /// (accelerometer + gyroscope + dmp)
+    /// with recommended [`Accel scale`], [`Gyro scale`], [`Mag scale`],
+    /// [`AccelDataRate`], [`GyroTempDataRate`], [`Dmp rate`]
+    /// and a sample rate of 200Hz. The default [`features`] and the
+    /// default [`orientation`] are used
+    ///
+    /// [`Dmp`]: ./struct.Dmp.html
+    /// [`Accel scale`]: ./enum.AccelScale.html
+    /// [`Gyro scale`]: ./enum.GyroScale.html
+    /// [`Mag scale`]: ./enum.MagScale.html
+    /// [`AccelDataRate`]: ./enum.AccelDataRate.html
+    /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
+    /// [`Dmp rate`]: ./enum.DmpRate.html
+    /// [`features`]: ./struct.DmpFeatures.html
+    /// [`orientation`]: ./enum.Orientation.html
+    pub fn dmp() -> Self {
+        MpuConfig { gyro_scale: Some(GyroScale::_2000DPS),
+                    accel_scale: Some(AccelScale::_8G),
+                    mag_scale: None,
+                    accel_data_rate: Some(AccelDataRate::DlpfConf(Dlpf::_1)),
+                    gyro_temp_data_rate:
+                        Some(GyroTempDataRate::DlpfConf(Dlpf::_1)),
+                    sample_rate_divisor: Some(4),
+                    dmp_configuration: None,
+                    _mode: PhantomData }
+    }
+
+    /// Sets dmp data output rate [`Dmp rate`]
+    ///
+    /// [`Dmp rate`]: ./enum.DmpRate.html
+    pub fn dmp_rate(&mut self, rate: DmpRate) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.rate = rate,
+            None => {
+                self.dmp_configuration =
+                    Some(DmpConfiguration { rate,
+                                            ..Default::default() })
+            },
+        }
+        self
+    }
+
+    /// Sets dmp base [`orientation`]
+    ///
+    /// [`orientation`]: ./enum.Orientation.html
+    pub fn dmp_orientation(&mut self, orientation: Orientation) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.orientation = orientation,
+            None => {
+                self.dmp_configuration =
+                    Some(DmpConfiguration { orientation,
+                                            ..Default::default() })
+            },
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to send raw gyro measurement
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_raw_gyro(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.raw_gyro = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { raw_gyro: feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to send raw accel measurement
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_raw_accel(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.raw_accel = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { raw_accel: feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to detect tap
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_tap(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.tap = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { tap: feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to send 3 axes quaternion
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_quat(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.quat = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { quat: feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to send 6 axes quaternion
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_quat6(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.quat6 = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { quat6: feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to detect orientation changement
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_orientation(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.android_orient = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { android_orient:
+                                                              feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
     }
 }
 
