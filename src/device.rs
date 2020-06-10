@@ -152,9 +152,8 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
             return Err(Self::Error::WriteManyError);
         }
         self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
-        for val in buffer {
-            self.spi.write(&[reg.write_address(), *val])?;
-        }
+        self.spi.write(&[reg.write_address()])?;
+        self.spi.write(buffer)?;
         self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
         Ok(())
     }
