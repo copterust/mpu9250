@@ -1060,10 +1060,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
-        if read == -(self.packet_size as isize) {
+        if read < 0 {
             return Err(Error::DmpDataNotReady);
-        } else if read != 0 {
-            return Err(Error::DmpDataInvalid);
         }
 
         let mut offset = 0;
@@ -1098,10 +1096,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
-        if read == -(self.packet_size as isize) {
+        if read < 0 {
             return Err(Error::DmpDataNotReady);
-        } else if read != 0 {
-            return Err(Error::DmpDataInvalid);
         }
 
         let mut offset = 0;
