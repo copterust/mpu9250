@@ -1342,8 +1342,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     /// Read internal FIFO into data. **The first byte must be discarded**.
     /// Return the number of byte left in the FIFO.
     /// - If the number is positive, bytes are left in the FIFO
-    /// - If the number is negative, only `data.len() - 1 - size` were read
-    /// - If the number is 0, the FIFO is empty and data as been filled fully
+    /// - If the number is negative, only `size` data was avilable and not read
+    /// - If the number is 0, the FIFO is empty and data has been filled fully
     pub fn read_fifo(&mut self, data: &mut [u8]) -> Result<isize, Error<E>> {
         let mut buffer: [u8; 3] = [0; 3];
         self.dev.read_many(Register::FIFO_COUNT_H, &mut buffer)?;
@@ -1351,12 +1351,10 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         if count == 0 {
             return Ok(-(data.len() as isize) + 1);
         }
-        let read = if data.len() > count + 1 {
-            count + 1
-        } else {
-            data.len()
-        };
-        self.dev.read_many(Register::FIFO_RW, &mut data[..read])?;
+        else if data.len() > count + 1 {
+            return Ok(-(count as isize))
+        }
+        self.dev.read_many(Register::FIFO_RW, &mut data[..])?;
         Ok(count as isize - data.len() as isize + 1)
     }
 
