@@ -1083,7 +1083,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         Ok(())
     }
 
-    /// Reads and returns raw unscaled DMP measurement depending on 
+    /// Reads and returns raw unscaled DMP measurement depending on
     /// activated features(LSB).
     pub fn dmp_unscaled_all<T1, T2>(&mut self) -> Result<UnscaledDmpMeasurement<T1, T2>, Error<E>>
         where T1: From<[i16; 3]>, T2: From<[i32; 4]>
@@ -1092,10 +1092,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
-        if read == -(self.packet_size as isize) {
+        if read < 0 {
             return Err(Error::DmpDataNotReady);
-        } else if read != 0 {
-            return Err(Error::DmpDataInvalid);
         }
 
         let mut offset = 0;
@@ -1121,7 +1119,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
 
     /// Read all measurement from DMP
-    /// Reads and returns DMP measurement scaled depending on 
+    /// Reads and returns DMP measurement scaled depending on
     /// activated features(LSB).
     pub fn dmp_all<T1, T2>(&mut self) -> Result<DmpMeasurement<T1, T2>, Error<E>>
         where T1: From<[f32; 3]>, T2: From<[f64; 4]>
@@ -1130,10 +1128,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
-        if read == -(self.packet_size as isize) {
+        if read < 0 {
             return Err(Error::DmpDataNotReady);
-        } else if read != 0 {
-            return Err(Error::DmpDataInvalid);
         }
 
         let mut offset = 0;
