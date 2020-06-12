@@ -1019,55 +1019,32 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
         self.write_mem(DmpMemory::CFG_15, &conf)?;
 
-        if features.tap | features.android_orient {
-            self.write_mem(DmpMemory::CFG_27, &[0x20])?;
-        } else {
-            self.write_mem(DmpMemory::CFG_27, &[0xd8])?;
-        }
+        let mut set_config =
+            |address, state, config_enabled, config_disabled| -> Result<(), Error<E>>
+            {
+                let config = if state {config_enabled} else {config_disabled};
+                self.write_mem(address, config)?;
 
-        // disable gyroscope auto calibration
-        let gyro_auto_calibrate = if features.gyro_auto_calibrate {
-            [0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d]
-        } else {
-            [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7]
-        };
-        self.write_mem(DmpMemory::CFG_MOTION_BIAS, &gyro_auto_calibrate)?;
+                Ok(())
+            };
+
+        set_config(DmpMemory::CFG_27, features.tap | features.android_orient, &[0x20], &[0xd8])?;
+        set_config(DmpMemory::CFG_MOTION_BIAS, features.gyro_auto_calibrate,
+             &[0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d],
+             &[0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7])?;
 
         if features.raw_gyro {
-            let conf = if features.gyro_auto_calibrate {
-                // send cal gyro
-                [0xb2, 0x8b, 0xb6, 0x9b]
-            } else {
-                // do not send cal gyro
-                [0xb0, 0x80, 0xb4, 0x90]
-            };
-            self.write_mem(DmpMemory::CFG_GYRO_RAW_DATA, &conf)?;
+            set_config(DmpMemory::CFG_GYRO_RAW_DATA, features.gyro_auto_calibrate,
+                 &[0xb2, 0x8b, 0xb6, 0x9b], &[0xb0, 0x80, 0xb4, 0x90])?;
         }
 
-        if features.tap {
-            self.write_mem(DmpMemory::CFG_20, &[0xF8])?;
         // TODO handle tap
-        } else {
-            self.write_mem(DmpMemory::CFG_20, &[0xd8])?;
-        }
-
-        if features.android_orient {
-            self.write_mem(DmpMemory::CFG_ANDROID_ORIENT_INT, &[0xd9])?;
-        } else {
-            self.write_mem(DmpMemory::CFG_ANDROID_ORIENT_INT, &[0xd8])?;
-        }
-
-        if features.quat {
-            self.write_mem(DmpMemory::CFG_LP_QUAT, &[0xc0, 0xc2, 0xc4, 0xc6])?;
-        } else {
-            self.write_mem(DmpMemory::CFG_LP_QUAT, &[0x8b, 0x8b, 0x8b, 0x8b])?;
-        }
-
-        if features.quat6 {
-            self.write_mem(DmpMemory::CFG_8, &[0x20, 0x28, 0x30, 0x38])?;
-        } else {
-            self.write_mem(DmpMemory::CFG_8, &[0xa3, 0xa3, 0xa3, 0xa3])?;
-        }
+        set_config(DmpMemory::CFG_20, features.tap, &[0xf8], &[0xd8])?;
+        set_config(DmpMemory::CFG_ANDROID_ORIENT_INT, features.android_orient, &[0xd9], &[0xd8])?;
+        set_config(DmpMemory::CFG_LP_QUAT, features.quat,
+             &[0xc0, 0xc2, 0xc4, 0xc6], &[0x8b, 0x8b, 0x8b, 0x8b])?;
+        set_config(DmpMemory::CFG_8, features.quat6,
+             &[0x20, 0x28, 0x30, 0x38], &[0xa3, 0xa3, 0xa3, 0xa3])?;
 
         self.reset_fifo(delay)?;
 
@@ -1743,177 +1720,177 @@ impl Register {
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub enum DmpMemory {
-	CFG_LP_QUAT = 2712,
-	END_ORIENT_TEMP = 1866,
-	CFG_27 = 2742,
-	CFG_20 = 2224,
-	CFG_23 = 2745,
-	CFG_FIFO_ON_EVENT = 2690,
-	END_PREDICTION_UPDATE = 1761,
-	CGNOTICE_INTR = 2620,
-	X_GRT_Y_TMP = 1358,
-	CFG_DR_INT = 1029,
-	CFG_AUTH = 1035,
-	UPDATE_PROP_ROT = 1835,
-	END_COMPARE_Y_X_TMP2 = 1455,
-	SKIP_X_GRT_Y_TMP = 1359,
-	SKIP_END_COMPARE = 1435,
-	FCFG_3 = 1088,
-	FCFG_2 = 1066,
-	FCFG_1 = 1062,
-	END_COMPARE_Y_X_TMP3 = 1434,
-	FCFG_7 = 1073,
-	FCFG_6 = 1106,
-	FLAT_STATE_END = 1713,
-	SWING_END_4 = 1616,
-	SWING_END_2 = 1565,
-	SWING_END_3 = 1587,
-	SWING_END_1 = 1550,
-	CFG_8 = 2718,
-	CFG_15 = 2727,
-	CFG_16 = 2746,
-	CFG_EXT_GYRO_BIAS = 1189,
-	END_COMPARE_Y_X_TMP = 1407,
-	DO_NOT_UPDATE_PROP_ROT = 1839,
-	CFG_7 = 1205,
-	FLAT_STATE_END_TEMP = 1683,
-	END_COMPARE_Y_X = 1484,
-	SKIP_SWING_END_1 = 1551,
-	SKIP_SWING_END_3 = 1588,
-	SKIP_SWING_END_2 = 1566,
-	TILTG75_START = 1672,
-	CFG_6 = 2753,
-	TILTL75_END = 1669,
-	END_ORIENT = 1884,
-	CFG_FLICK_IN = 2573,
-	TILTL75_START = 1643,
-	CFG_MOTION_BIAS = 1208,
-	X_GRT_Y = 1408,
-	TEMPLABEL = 2324,
-	CFG_ANDROID_ORIENT_INT = 1853,
-	CFG_GYRO_RAW_DATA = 2722,
-	X_GRT_Y_TMP2 = 1379,
+    CFG_LP_QUAT = 2712,
+    END_ORIENT_TEMP = 1866,
+    CFG_27 = 2742,
+    CFG_20 = 2224,
+    CFG_23 = 2745,
+    CFG_FIFO_ON_EVENT = 2690,
+    END_PREDICTION_UPDATE = 1761,
+    CGNOTICE_INTR = 2620,
+    X_GRT_Y_TMP = 1358,
+    CFG_DR_INT = 1029,
+    CFG_AUTH = 1035,
+    UPDATE_PROP_ROT = 1835,
+    END_COMPARE_Y_X_TMP2 = 1455,
+    SKIP_X_GRT_Y_TMP = 1359,
+    SKIP_END_COMPARE = 1435,
+    FCFG_3 = 1088,
+    FCFG_2 = 1066,
+    FCFG_1 = 1062,
+    END_COMPARE_Y_X_TMP3 = 1434,
+    FCFG_7 = 1073,
+    FCFG_6 = 1106,
+    FLAT_STATE_END = 1713,
+    SWING_END_4 = 1616,
+    SWING_END_2 = 1565,
+    SWING_END_3 = 1587,
+    SWING_END_1 = 1550,
+    CFG_8 = 2718,
+    CFG_15 = 2727,
+    CFG_16 = 2746,
+    CFG_EXT_GYRO_BIAS = 1189,
+    END_COMPARE_Y_X_TMP = 1407,
+    DO_NOT_UPDATE_PROP_ROT = 1839,
+    CFG_7 = 1205,
+    FLAT_STATE_END_TEMP = 1683,
+    END_COMPARE_Y_X = 1484,
+    SKIP_SWING_END_1 = 1551,
+    SKIP_SWING_END_3 = 1588,
+    SKIP_SWING_END_2 = 1566,
+    TILTG75_START = 1672,
+    CFG_6 = 2753,
+    TILTL75_END = 1669,
+    END_ORIENT = 1884,
+    CFG_FLICK_IN = 2573,
+    TILTL75_START = 1643,
+    CFG_MOTION_BIAS = 1208,
+    X_GRT_Y = 1408,
+    TEMPLABEL = 2324,
+    CFG_ANDROID_ORIENT_INT = 1853,
+    CFG_GYRO_RAW_DATA = 2722,
+    X_GRT_Y_TMP2 = 1379,
 
-	D_0_22 = 22+512,
-	D_0_24 = 24+512,
+    D_0_22 = 22+512,
+    D_0_24 = 24+512,
 
-	D_0_36 = 36,
-	//D_0_52 = 52, // Same as D_TILT1_H
-	D_0_96 = 96,
-	D_0_104 = 104,
-	D_0_108 = 108,
-	D_0_163 = 163,
-	D_0_188 = 188,
-	D_0_192 = 192,
-	D_0_224 = 224,
-	D_0_228 = 228,
-	D_0_232 = 232,
-	D_0_236 = 236,
+    D_0_36 = 36,
+    //D_0_52 = 52, // Same as D_TILT1_H
+    D_0_96 = 96,
+    D_0_104 = 104,
+    D_0_108 = 108,
+    D_0_163 = 163,
+    D_0_188 = 188,
+    D_0_192 = 192,
+    D_0_224 = 224,
+    D_0_228 = 228,
+    D_0_232 = 232,
+    D_0_236 = 236,
 
-	D_1_2 = 256 + 2,
-	D_1_4 = 256 + 4,
-	D_1_8 = 256 + 8,
-	D_1_10 = 256 + 10,
-	D_1_24 = 256 + 24,
-	D_1_28 = 256 + 28,
-	D_1_36 = 256 + 36,
-	D_1_40 = 256 + 40,
-	D_1_44 = 256 + 44,
-	D_1_72 = 256 + 72,
-	D_1_74 = 256 + 74,
-	D_1_79 = 256 + 79,
-	D_1_88 = 256 + 88,
-	D_1_90 = 256 + 90,
-	D_1_92 = 256 + 92,
-	D_1_96 = 256 + 96,
-	D_1_98 = 256 + 98,
-	D_1_106 = 256 + 106,
-	D_1_108 = 256 + 108,
-	D_1_112 = 256 + 112,
-	D_1_128 = 256 + 144,
-	D_1_152 = 256 + 12,
-	D_1_160 = 256 + 160,
-	D_1_176 = 256 + 176,
-	D_1_178 = 256 + 178,
-	D_1_218 = 256 + 218,
-	D_1_232 = 256 + 232,
-	D_1_236 = 256 + 236,
-	D_1_240 = 256 + 240,
-	D_1_244 = 256 + 244,
-	D_1_250 = 256 + 250,
-	D_1_252 = 256 + 252,
-	D_2_12 = 512 + 12,
-	D_2_96 = 512 + 96,
-	D_2_108 = 512 + 108,
-	D_2_208 = 512 + 208,
-	D_2_224 = 512 + 224,
-	//D_2_236 = 512 + 236, // Same as FLICK_UPPER
-	D_2_244 = 512 + 244,
-	D_2_248 = 512 + 248,
-	D_2_252 = 512 + 252,
+    D_1_2 = 256 + 2,
+    D_1_4 = 256 + 4,
+    D_1_8 = 256 + 8,
+    D_1_10 = 256 + 10,
+    D_1_24 = 256 + 24,
+    D_1_28 = 256 + 28,
+    D_1_36 = 256 + 36,
+    D_1_40 = 256 + 40,
+    D_1_44 = 256 + 44,
+    D_1_72 = 256 + 72,
+    D_1_74 = 256 + 74,
+    D_1_79 = 256 + 79,
+    D_1_88 = 256 + 88,
+    D_1_90 = 256 + 90,
+    D_1_92 = 256 + 92,
+    D_1_96 = 256 + 96,
+    D_1_98 = 256 + 98,
+    D_1_106 = 256 + 106,
+    D_1_108 = 256 + 108,
+    D_1_112 = 256 + 112,
+    D_1_128 = 256 + 144,
+    D_1_152 = 256 + 12,
+    D_1_160 = 256 + 160,
+    D_1_176 = 256 + 176,
+    D_1_178 = 256 + 178,
+    D_1_218 = 256 + 218,
+    D_1_232 = 256 + 232,
+    D_1_236 = 256 + 236,
+    D_1_240 = 256 + 240,
+    D_1_244 = 256 + 244,
+    D_1_250 = 256 + 250,
+    D_1_252 = 256 + 252,
+    D_2_12 = 512 + 12,
+    D_2_96 = 512 + 96,
+    D_2_108 = 512 + 108,
+    D_2_208 = 512 + 208,
+    D_2_224 = 512 + 224,
+    //D_2_236 = 512 + 236, // Same as FLICK_UPPER
+    D_2_244 = 512 + 244,
+    D_2_248 = 512 + 248,
+    D_2_252 = 512 + 252,
 
-	CPASS_BIAS_X = 35 * 16 + 4,
-	CPASS_BIAS_Y = 35 * 16 + 8,
-	CPASS_BIAS_Z = 35 * 16 + 12,
-	CPASS_MTX_00 = 36 * 16,
-	CPASS_MTX_01 = 36 * 16 + 4,
-	CPASS_MTX_02 = 36 * 16 + 8,
-	CPASS_MTX_10 = 36 * 16 + 12,
-	CPASS_MTX_11 = 37 * 16,
-	CPASS_MTX_12 = 37 * 16 + 4,
-	CPASS_MTX_20 = 37 * 16 + 8,
-	CPASS_MTX_21 = 37 * 16 + 12,
-	CPASS_MTX_22 = 43 * 16 + 12,
-	D_EXT_GYRO_BIAS_X = 61 * 16,
-	D_EXT_GYRO_BIAS_Y = 61 * 16 + 4,
-	D_EXT_GYRO_BIAS_Z = 61 * 16 + 8,
-	D_ACT0 = 40 * 16,
-	D_ACSX = 40 * 16 + 4,
-	D_ACSY = 40 * 16 + 8,
-	D_ACSZ = 40 * 16 + 12,
+    CPASS_BIAS_X = 35 * 16 + 4,
+    CPASS_BIAS_Y = 35 * 16 + 8,
+    CPASS_BIAS_Z = 35 * 16 + 12,
+    CPASS_MTX_00 = 36 * 16,
+    CPASS_MTX_01 = 36 * 16 + 4,
+    CPASS_MTX_02 = 36 * 16 + 8,
+    CPASS_MTX_10 = 36 * 16 + 12,
+    CPASS_MTX_11 = 37 * 16,
+    CPASS_MTX_12 = 37 * 16 + 4,
+    CPASS_MTX_20 = 37 * 16 + 8,
+    CPASS_MTX_21 = 37 * 16 + 12,
+    CPASS_MTX_22 = 43 * 16 + 12,
+    D_EXT_GYRO_BIAS_X = 61 * 16,
+    D_EXT_GYRO_BIAS_Y = 61 * 16 + 4,
+    D_EXT_GYRO_BIAS_Z = 61 * 16 + 8,
+    D_ACT0 = 40 * 16,
+    D_ACSX = 40 * 16 + 4,
+    D_ACSY = 40 * 16 + 8,
+    D_ACSZ = 40 * 16 + 12,
 
-	FLICK_MSG = 45 * 16 + 4,
-	FLICK_COUNTER = 45 * 16 + 8,
-	FLICK_LOWER = 45 * 16 + 12,
-	FLICK_UPPER = 46 * 16 + 12,
+    FLICK_MSG = 45 * 16 + 4,
+    FLICK_COUNTER = 45 * 16 + 8,
+    FLICK_LOWER = 45 * 16 + 12,
+    FLICK_UPPER = 46 * 16 + 12,
 
-	D_AUTH_OUT = 992,
-	D_AUTH_IN = 996,
-	D_AUTH_A = 1000,
-	D_AUTH_B = 1004,
+    D_AUTH_OUT = 992,
+    D_AUTH_IN = 996,
+    D_AUTH_A = 1000,
+    D_AUTH_B = 1004,
 
-	D_PEDSTD_BP_B = 768 + 0x1C,
-	D_PEDSTD_HP_A = 768 + 0x78,
-	D_PEDSTD_HP_B = 768 + 0x7C,
-	D_PEDSTD_BP_A4 = 768 + 0x40,
-	D_PEDSTD_BP_A3 = 768 + 0x44,
-	D_PEDSTD_BP_A2 = 768 + 0x48,
-	D_PEDSTD_BP_A1 = 768 + 0x4C,
-	D_PEDSTD_INT_THRSH = 768 + 0x68,
-	D_PEDSTD_CLIP = 768 + 0x6C,
-	D_PEDSTD_SB = 768 + 0x28,
-	D_PEDSTD_SB_TIME = 768 + 0x2C,
-	D_PEDSTD_PEAKTHRSH = 768 + 0x98,
-	D_PEDSTD_TIML = 768 + 0x2A,
-	D_PEDSTD_TIMH = 768 + 0x2E,
-	D_PEDSTD_PEAK = 768 + 0x94,
-	D_PEDSTD_STEPCTR = 768 + 0x60,
-	D_PEDSTD_TIMECTR = 964,
-	D_PEDSTD_DECI = 768 + 0xA0,
+    D_PEDSTD_BP_B = 768 + 0x1C,
+    D_PEDSTD_HP_A = 768 + 0x78,
+    D_PEDSTD_HP_B = 768 + 0x7C,
+    D_PEDSTD_BP_A4 = 768 + 0x40,
+    D_PEDSTD_BP_A3 = 768 + 0x44,
+    D_PEDSTD_BP_A2 = 768 + 0x48,
+    D_PEDSTD_BP_A1 = 768 + 0x4C,
+    D_PEDSTD_INT_THRSH = 768 + 0x68,
+    D_PEDSTD_CLIP = 768 + 0x6C,
+    D_PEDSTD_SB = 768 + 0x28,
+    D_PEDSTD_SB_TIME = 768 + 0x2C,
+    D_PEDSTD_PEAKTHRSH = 768 + 0x98,
+    D_PEDSTD_TIML = 768 + 0x2A,
+    D_PEDSTD_TIMH = 768 + 0x2E,
+    D_PEDSTD_PEAK = 768 + 0x94,
+    D_PEDSTD_STEPCTR = 768 + 0x60,
+    D_PEDSTD_TIMECTR = 964,
+    D_PEDSTD_DECI = 768 + 0xA0,
 
-	//D_HOST_NO_MOT = 976, // Same as D_EXT_GYRO_BIAS_X
-	D_ACCEL_BIAS = 660,
+    //D_HOST_NO_MOT = 976, // Same as D_EXT_GYRO_BIAS_X
+    D_ACCEL_BIAS = 660,
 
-	D_ORIENT_GAP = 76,
+    D_ORIENT_GAP = 76,
 
-	D_TILT0_H = 48,
-	D_TILT0_L = 50,
-	D_TILT1_H = 52,
-	D_TILT1_L = 54,
-	D_TILT2_H = 56,
-	D_TILT2_L = 58,
-	D_TILT3_H = 60,
-	D_TILT3_L = 62,
+    D_TILT0_H = 48,
+    D_TILT0_L = 50,
+    D_TILT1_H = 52,
+    D_TILT1_L = 54,
+    D_TILT2_H = 56,
+    D_TILT2_L = 58,
+    D_TILT3_H = 60,
+    D_TILT3_L = 62,
 }
 
 impl Into<u16> for DmpMemory {
