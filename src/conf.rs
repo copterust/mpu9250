@@ -319,6 +319,8 @@ pub struct DmpFeatures {
     pub quat6: bool,
     /// DMP output quaternion based on gyroscope only
     pub quat: bool,
+    /// DMP auto calibrate gyro
+    pub gyro_auto_calibrate: bool,
 }
 #[cfg(feature = "dmp")]
 impl DmpFeatures {
@@ -346,7 +348,8 @@ impl Default for DmpFeatures {
                       tap: false,
                       android_orient: false,
                       quat6: true,
-                      quat: false }
+                      quat: false,
+                      gyro_auto_calibrate: false }
     }
 }
 
@@ -555,6 +558,22 @@ impl MpuConfig<types::Dmp> {
             None => self.dmp_configuration =
                 Some(DmpConfiguration { features:
                                             DmpFeatures { quat6: feature,
+                                                          ..Default::default() },
+                                        ..Default::default() }),
+        }
+        self
+    }
+
+    /// Selects [`dmp features`] to auto calibrate gyro
+    ///
+    /// [`dmp features`]: ./struct.DmpFeatures.html
+    pub fn dmp_features_gyro_auto_calibrate(&mut self, feature: bool) -> &mut Self {
+        match self.dmp_configuration.as_mut() {
+            Some(mut x) => x.features.gyro_auto_calibrate = feature,
+            None => self.dmp_configuration =
+                Some(DmpConfiguration { features:
+                                            DmpFeatures { gyro_auto_calibrate:
+                                                              feature,
                                                           ..Default::default() },
                                         ..Default::default() }),
         }
