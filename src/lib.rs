@@ -914,24 +914,18 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.load_firmware(firmware)?;
 
         // load orientation
-        const FCFG_1: u16 = 1062;
-        const FCFG_2: u16 = 1066;
-        const FCFG_3: u16 = 1088;
-        const FCFG_7: u16 = 1073;
-        self.write_mem(FCFG_1, &conf.orientation.gyro_axes())?;
-        self.write_mem(FCFG_2, &conf.orientation.accel_axes())?;
-        self.write_mem(FCFG_3, &conf.orientation.gyro_signs())?;
-        self.write_mem(FCFG_7, &conf.orientation.accel_signs())?;
+        self.write_mem(DmpMemory::FCFG_1, &conf.orientation.gyro_axes())?;
+        self.write_mem(DmpMemory::FCFG_2, &conf.orientation.accel_axes())?;
+        self.write_mem(DmpMemory::FCFG_3, &conf.orientation.gyro_signs())?;
+        self.write_mem(DmpMemory::FCFG_7, &conf.orientation.accel_signs())?;
 
         // set dmp features
         self.set_dmp_feature(delay)?;
 
-        const D_0_22: u16 = 534;
         let div = [0, conf.rate as u8];
-        self.write_mem(D_0_22, &div)?;
+        self.write_mem(DmpMemory::D_0_22, &div)?;
 
-        const CFG_6: u16 = 2753;
-        self.write_mem(CFG_6,
+        self.write_mem(DmpMemory::CFG_6,
                        &[0xfe, 0xf2, 0xab, 0xc4, 0xaa, 0xf1, 0xdf, 0xdf,
                          0xbb, 0xaf, 0xdf, 0xdf])?;
 
@@ -953,8 +947,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.reset_fifo(delay)?;
 
         // set interrupt mode
-        const CFG_FIFO_ON_EVENT: u16 = 2690;
-        self.write_mem(CFG_FIFO_ON_EVENT,
+        self.write_mem(DmpMemory::CFG_FIFO_ON_EVENT,
                        &[0xd8, 0xb1, 0xb9, 0xf3, 0x8b, 0xa3, 0x91, 0xb6,
                          0x09, 0xb4, 0xd9])?;
 
@@ -983,17 +976,21 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     }
 
     /// Write the provided slice at the specified address in dmp memory
-    fn write_mem(&mut self, addr: u16, data: &[u8]) -> Result<(), Error<E>> {
-        self.dev.write(Register::BANK_SEL, (addr >> 8) as u8)?;
-        self.dev.write(Register::MEM_ADDR, (addr & 0xff) as u8)?;
+    fn write_mem<T>(&mut self, addr: T, data: &[u8]) -> Result<(), Error<E>>
+        where T: Into<u16> + Copy
+    {
+        self.dev.write(Register::BANK_SEL, (addr.into() >> 8) as u8)?;
+        self.dev.write(Register::MEM_ADDR, (addr.into() & 0xff) as u8)?;
         self.dev.write_many(Register::MEM_RW, data)?;
         Ok(())
     }
 
     /// Read dmp memory at the specified address into data
-    fn read_mem(&mut self, addr: u16, data: &mut [u8]) -> Result<(), Error<E>> {
-        self.dev.write(Register::BANK_SEL, (addr >> 8) as u8)?;
-        self.dev.write(Register::MEM_ADDR, (addr & 0xff) as u8)?;
+    fn read_mem<T>(&mut self, addr: T, data: &mut [u8]) -> Result<(), Error<E>>
+        where T: Into<u16> + Copy
+    {
+        self.dev.write(Register::BANK_SEL, (addr.into() >> 8) as u8)?;
+        self.dev.write(Register::MEM_ADDR, (addr.into() & 0xff) as u8)?;
         self.dev.read_many(Register::MEM_RW, data)?;
         Ok(())
     }
@@ -1007,10 +1004,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                                   (46_850_825 >> 16) as u8,
                                   (46_850_825 >> 8) as u8,
                                   (46_850_825 & 0xff) as u8];
-        const D_0_104: u16 = 104;
-        self.write_mem(D_0_104, &GYRO_SF)?;
+        self.write_mem(DmpMemory::D_0_104, &GYRO_SF)?;
 
-        const CFG_15: u16 = 2727;
         let mut conf = [0xa3 as u8; 10];
         if features.raw_accel {
             conf[1] = 0xc0;
@@ -1022,64 +1017,34 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             conf[5] = 0xcc;
             conf[6] = 0xc6;
         }
-        self.write_mem(CFG_15, &conf)?;
+        self.write_mem(DmpMemory::CFG_15, &conf)?;
 
-        const CFG_27: u16 = 2742;
-        if features.tap | features.android_orient {
-            self.write_mem(CFG_27, &[0x20])?;
-        } else {
-            self.write_mem(CFG_27, &[0xd8])?;
-        }
+        let mut set_config =
+            |address, state, config_enabled, config_disabled| -> Result<(), Error<E>>
+            {
+                let config = if state {config_enabled} else {config_disabled};
+                self.write_mem(address, config)?;
 
-        // disable gyroscope auto calibration
-        const CFG_MOTION_BIAS: u16 = 1208;
-        let gyro_auto_calibrate = if features.gyro_auto_calibrate {
-            [0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d]
-        } else {
-            [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7]
-        };
-        self.write_mem(CFG_MOTION_BIAS, &gyro_auto_calibrate)?;
+                Ok(())
+            };
+
+        set_config(DmpMemory::CFG_27, features.tap | features.android_orient, &[0x20], &[0xd8])?;
+        set_config(DmpMemory::CFG_MOTION_BIAS, features.gyro_auto_calibrate,
+             &[0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d],
+             &[0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7])?;
 
         if features.raw_gyro {
-            const CFG_GYRO_RAW_DATA: u16 = 2722;
-            let conf = if features.gyro_auto_calibrate {
-                // send cal gyro
-                [0xb2, 0x8b, 0xb6, 0x9b]
-            } else {
-                // do not send cal gyro
-                [0xb0, 0x80, 0xb4, 0x90]
-            };
-            self.write_mem(CFG_GYRO_RAW_DATA, &conf)?;
+            set_config(DmpMemory::CFG_GYRO_RAW_DATA, features.gyro_auto_calibrate,
+                 &[0xb2, 0x8b, 0xb6, 0x9b], &[0xb0, 0x80, 0xb4, 0x90])?;
         }
 
-        const CFG_20: u16 = 2224;
-        if features.tap {
-            self.write_mem(CFG_20, &[0xF8])?;
         // TODO handle tap
-        } else {
-            self.write_mem(CFG_20, &[0xd8])?;
-        }
-
-        const CFG_ANDROID_ORIENT: u16 = 1853;
-        if features.android_orient {
-            self.write_mem(CFG_ANDROID_ORIENT, &[0xd9])?;
-        } else {
-            self.write_mem(CFG_ANDROID_ORIENT, &[0xd8])?;
-        }
-
-        const CFG_LP_QUAT: u16 = 2712;
-        if features.quat {
-            self.write_mem(CFG_LP_QUAT, &[0xc0, 0xc2, 0xc4, 0xc6])?;
-        } else {
-            self.write_mem(CFG_LP_QUAT, &[0x8b, 0x8b, 0x8b, 0x8b])?;
-        }
-
-        const CFG_8: u16 = 2718;
-        if features.quat6 {
-            self.write_mem(CFG_8, &[0x20, 0x28, 0x30, 0x38])?;
-        } else {
-            self.write_mem(CFG_8, &[0xa3, 0xa3, 0xa3, 0xa3])?;
-        }
+        set_config(DmpMemory::CFG_20, features.tap, &[0xf8], &[0xd8])?;
+        set_config(DmpMemory::CFG_ANDROID_ORIENT_INT, features.android_orient, &[0xd9], &[0xd8])?;
+        set_config(DmpMemory::CFG_LP_QUAT, features.quat,
+             &[0xc0, 0xc2, 0xc4, 0xc6], &[0x8b, 0x8b, 0x8b, 0x8b])?;
+        set_config(DmpMemory::CFG_8, features.quat6,
+             &[0x20, 0x28, 0x30, 0x38], &[0xa3, 0xa3, 0xa3, 0xa3])?;
 
         self.reset_fifo(delay)?;
 
@@ -1747,6 +1712,190 @@ impl Register {
 
     fn write_address(&self) -> u8 {
         *self as u8 | W
+    }
+}
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+#[doc(hidden)]
+pub enum DmpMemory {
+    CFG_LP_QUAT = 2712,
+    END_ORIENT_TEMP = 1866,
+    CFG_27 = 2742,
+    CFG_20 = 2224,
+    CFG_23 = 2745,
+    CFG_FIFO_ON_EVENT = 2690,
+    END_PREDICTION_UPDATE = 1761,
+    CGNOTICE_INTR = 2620,
+    X_GRT_Y_TMP = 1358,
+    CFG_DR_INT = 1029,
+    CFG_AUTH = 1035,
+    UPDATE_PROP_ROT = 1835,
+    END_COMPARE_Y_X_TMP2 = 1455,
+    SKIP_X_GRT_Y_TMP = 1359,
+    SKIP_END_COMPARE = 1435,
+    FCFG_3 = 1088,
+    FCFG_2 = 1066,
+    FCFG_1 = 1062,
+    END_COMPARE_Y_X_TMP3 = 1434,
+    FCFG_7 = 1073,
+    FCFG_6 = 1106,
+    FLAT_STATE_END = 1713,
+    SWING_END_4 = 1616,
+    SWING_END_2 = 1565,
+    SWING_END_3 = 1587,
+    SWING_END_1 = 1550,
+    CFG_8 = 2718,
+    CFG_15 = 2727,
+    CFG_16 = 2746,
+    CFG_EXT_GYRO_BIAS = 1189,
+    END_COMPARE_Y_X_TMP = 1407,
+    DO_NOT_UPDATE_PROP_ROT = 1839,
+    CFG_7 = 1205,
+    FLAT_STATE_END_TEMP = 1683,
+    END_COMPARE_Y_X = 1484,
+    SKIP_SWING_END_1 = 1551,
+    SKIP_SWING_END_3 = 1588,
+    SKIP_SWING_END_2 = 1566,
+    TILTG75_START = 1672,
+    CFG_6 = 2753,
+    TILTL75_END = 1669,
+    END_ORIENT = 1884,
+    CFG_FLICK_IN = 2573,
+    TILTL75_START = 1643,
+    CFG_MOTION_BIAS = 1208,
+    X_GRT_Y = 1408,
+    TEMPLABEL = 2324,
+    CFG_ANDROID_ORIENT_INT = 1853,
+    CFG_GYRO_RAW_DATA = 2722,
+    X_GRT_Y_TMP2 = 1379,
+
+    D_0_22 = 22+512,
+    D_0_24 = 24+512,
+
+    D_0_36 = 36,
+    //D_0_52 = 52, // Same as D_TILT1_H
+    D_0_96 = 96,
+    D_0_104 = 104,
+    D_0_108 = 108,
+    D_0_163 = 163,
+    D_0_188 = 188,
+    D_0_192 = 192,
+    D_0_224 = 224,
+    D_0_228 = 228,
+    D_0_232 = 232,
+    D_0_236 = 236,
+
+    D_1_2 = 256 + 2,
+    D_1_4 = 256 + 4,
+    D_1_8 = 256 + 8,
+    D_1_10 = 256 + 10,
+    D_1_24 = 256 + 24,
+    D_1_28 = 256 + 28,
+    D_1_36 = 256 + 36,
+    D_1_40 = 256 + 40,
+    D_1_44 = 256 + 44,
+    D_1_72 = 256 + 72,
+    D_1_74 = 256 + 74,
+    D_1_79 = 256 + 79,
+    D_1_88 = 256 + 88,
+    D_1_90 = 256 + 90,
+    D_1_92 = 256 + 92,
+    D_1_96 = 256 + 96,
+    D_1_98 = 256 + 98,
+    D_1_106 = 256 + 106,
+    D_1_108 = 256 + 108,
+    D_1_112 = 256 + 112,
+    D_1_128 = 256 + 144,
+    D_1_152 = 256 + 12,
+    D_1_160 = 256 + 160,
+    D_1_176 = 256 + 176,
+    D_1_178 = 256 + 178,
+    D_1_218 = 256 + 218,
+    D_1_232 = 256 + 232,
+    D_1_236 = 256 + 236,
+    D_1_240 = 256 + 240,
+    D_1_244 = 256 + 244,
+    D_1_250 = 256 + 250,
+    D_1_252 = 256 + 252,
+    D_2_12 = 512 + 12,
+    D_2_96 = 512 + 96,
+    D_2_108 = 512 + 108,
+    D_2_208 = 512 + 208,
+    D_2_224 = 512 + 224,
+    //D_2_236 = 512 + 236, // Same as FLICK_UPPER
+    D_2_244 = 512 + 244,
+    D_2_248 = 512 + 248,
+    D_2_252 = 512 + 252,
+
+    CPASS_BIAS_X = 35 * 16 + 4,
+    CPASS_BIAS_Y = 35 * 16 + 8,
+    CPASS_BIAS_Z = 35 * 16 + 12,
+    CPASS_MTX_00 = 36 * 16,
+    CPASS_MTX_01 = 36 * 16 + 4,
+    CPASS_MTX_02 = 36 * 16 + 8,
+    CPASS_MTX_10 = 36 * 16 + 12,
+    CPASS_MTX_11 = 37 * 16,
+    CPASS_MTX_12 = 37 * 16 + 4,
+    CPASS_MTX_20 = 37 * 16 + 8,
+    CPASS_MTX_21 = 37 * 16 + 12,
+    CPASS_MTX_22 = 43 * 16 + 12,
+    D_EXT_GYRO_BIAS_X = 61 * 16,
+    D_EXT_GYRO_BIAS_Y = 61 * 16 + 4,
+    D_EXT_GYRO_BIAS_Z = 61 * 16 + 8,
+    D_ACT0 = 40 * 16,
+    D_ACSX = 40 * 16 + 4,
+    D_ACSY = 40 * 16 + 8,
+    D_ACSZ = 40 * 16 + 12,
+
+    FLICK_MSG = 45 * 16 + 4,
+    FLICK_COUNTER = 45 * 16 + 8,
+    FLICK_LOWER = 45 * 16 + 12,
+    FLICK_UPPER = 46 * 16 + 12,
+
+    D_AUTH_OUT = 992,
+    D_AUTH_IN = 996,
+    D_AUTH_A = 1000,
+    D_AUTH_B = 1004,
+
+    D_PEDSTD_BP_B = 768 + 0x1C,
+    D_PEDSTD_HP_A = 768 + 0x78,
+    D_PEDSTD_HP_B = 768 + 0x7C,
+    D_PEDSTD_BP_A4 = 768 + 0x40,
+    D_PEDSTD_BP_A3 = 768 + 0x44,
+    D_PEDSTD_BP_A2 = 768 + 0x48,
+    D_PEDSTD_BP_A1 = 768 + 0x4C,
+    D_PEDSTD_INT_THRSH = 768 + 0x68,
+    D_PEDSTD_CLIP = 768 + 0x6C,
+    D_PEDSTD_SB = 768 + 0x28,
+    D_PEDSTD_SB_TIME = 768 + 0x2C,
+    D_PEDSTD_PEAKTHRSH = 768 + 0x98,
+    D_PEDSTD_TIML = 768 + 0x2A,
+    D_PEDSTD_TIMH = 768 + 0x2E,
+    D_PEDSTD_PEAK = 768 + 0x94,
+    D_PEDSTD_STEPCTR = 768 + 0x60,
+    D_PEDSTD_TIMECTR = 964,
+    D_PEDSTD_DECI = 768 + 0xA0,
+
+    //D_HOST_NO_MOT = 976, // Same as D_EXT_GYRO_BIAS_X
+    D_ACCEL_BIAS = 660,
+
+    D_ORIENT_GAP = 76,
+
+    D_TILT0_H = 48,
+    D_TILT0_L = 50,
+    D_TILT1_H = 52,
+    D_TILT1_L = 54,
+    D_TILT2_H = 56,
+    D_TILT2_L = 58,
+    D_TILT3_H = 60,
+    D_TILT3_L = 62,
+}
+
+impl Into<u16> for DmpMemory {
+    fn into(self) -> u16 {
+        self as u16
     }
 }
 
