@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [V0.22.0]
+
+### Fixed
+
+- Move DMP register map in an enumeration
+- Fix bug that prevent to read DMP when there were multiple packet in the fifo
+- Fix behavior of `read_fifo`
+
 ## [v0.21.0]
 
 ### Added
