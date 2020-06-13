@@ -1189,7 +1189,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             f64::from(quat[0]),
             f64::from(quat[1]),
             f64::from(quat[2]),
-            f64::from(quat[2])
+            f64::from(quat[3])
         ];
         let sum = libm::sqrt(quat.iter().map(|x| libm::pow(*x, 2.0)).sum::<f64>());
         [
