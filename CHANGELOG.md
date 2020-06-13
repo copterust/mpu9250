@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Move DMP register map in an enumeration
 - Fix bug that prevent to read DMP when there were multiple packet in the fifo
 - Fix behavior of `read_fifo`
+- Fix bug in quaternion normalization
 
 ## [v0.21.0]
 
