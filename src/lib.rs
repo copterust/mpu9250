@@ -1033,14 +1033,17 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         // disable gyroscope auto calibration
         const CFG_MOTION_BIAS: u16 = 1208;
-        let gyro_auto_calibrate =
-            [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7];
+        let gyro_auto_calibrate = if features.gyro_auto_calibrate {
+            [0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d]
+        } else {
+            [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7]
+        };
         self.write_mem(CFG_MOTION_BIAS, &gyro_auto_calibrate)?;
 
         if features.raw_gyro {
             const CFG_GYRO_RAW_DATA: u16 = 2722;
-            let conf = if false {
-                // send cal gyro?
+            let conf = if features.gyro_auto_calibrate {
+                // send cal gyro
                 [0xb2, 0x8b, 0xb6, 0x9b]
             } else {
                 // do not send cal gyro
