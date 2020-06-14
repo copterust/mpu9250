@@ -588,7 +588,9 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
 
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// measurements (LSB).
-    pub fn unscaled_all<T>(&mut self) -> Result<UnscaledImuMeasurements<T>, E> where T: From<[i16; 3]>{
+    pub fn unscaled_all<T>(&mut self) -> Result<UnscaledImuMeasurements<T>, E>
+        where T: From<[i16; 3]>
+    {
         let buffer = &mut [0; 15];
         self.dev.read_many(Register::ACCEL_XOUT_H, &mut buffer[..])?;
         let accel = self.to_vector(buffer, 0).into();
@@ -602,7 +604,9 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
 
     /// Reads and returns Accelerometer + Gyroscope + Thermometer
     /// measurements scaled and converted to respective units.
-    pub fn all<T>(&mut self) -> Result<ImuMeasurements<T>, E> where T: From<[f32; 3]> {
+    pub fn all<T>(&mut self) -> Result<ImuMeasurements<T>, E>
+        where T: From<[f32; 3]>
+    {
         let buffer = &mut [0; 15];
         self.dev.read_many(Register::ACCEL_XOUT_H, &mut buffer[..])?;
 
@@ -626,9 +630,10 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
     /// NOTE: MPU is able to store accelerometer biases, to apply them
     ///       automatically, but at this moment it does not work.
     pub fn calibrate_at_rest<D, T>(&mut self,
-                                delay: &mut D)
-                                -> Result<T, Error<E>>
-        where D: DelayMs<u8>, T: From<[f32; 3]>
+                                   delay: &mut D)
+                                   -> Result<T, Error<E>>
+        where D: DelayMs<u8>,
+              T: From<[f32; 3]>
     {
         Ok(self._calibrate_at_rest(delay)?.into())
     }
@@ -685,10 +690,10 @@ impl<E, DEV> Mpu9250<DEV, Marg>
     /// NOTE: MPU is able to store accelerometer biases, to apply them
     ///       automatically, but at this moment it does not work.
     pub fn calibrate_at_rest<D, T>(&mut self,
-                                delay: &mut D)
-                                -> Result<T, Error<E>>
+                                   delay: &mut D)
+                                   -> Result<T, Error<E>>
         where D: DelayMs<u8>,
-        T: From<[f32; 3]>,
+              T: From<[f32; 3]>
     {
         let accel_biases = self._calibrate_at_rest(delay)?;
         self.init_ak8963(delay)?;
@@ -710,12 +715,11 @@ impl<E, DEV> Mpu9250<DEV, Marg>
         let mag_y_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAY)?;
         let mag_z_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAZ)?;
         // Return x-axis sensitivity adjustment values, etc.
-        self.raw_mag_sensitivity_adjustments = [mag_x_bias, mag_y_bias, mag_z_bias];
-        self.mag_sensitivity_adjustments = [
-            f32(mag_x_bias - 128) / 256. + 1.,
-            f32(mag_y_bias - 128) / 256. + 1.,
-            f32(mag_z_bias - 128) / 256. + 1.,
-        ];
+        self.raw_mag_sensitivity_adjustments =
+            [mag_x_bias, mag_y_bias, mag_z_bias];
+        self.mag_sensitivity_adjustments = [f32(mag_x_bias - 128) / 256. + 1.,
+                                            f32(mag_y_bias - 128) / 256. + 1.,
+                                            f32(mag_z_bias - 128) / 256. + 1.];
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
         // Set magnetometer data resolution and sample ODR
@@ -743,7 +747,9 @@ impl<E, DEV> Mpu9250<DEV, Marg>
 
     /// Reads and returns raw unscaled Accelerometer + Gyroscope + Thermometer
     /// + Magnetometer measurements (LSB).
-    pub fn unscaled_all<T>(&mut self) -> Result<UnscaledMargMeasurements<T>, E> where T: From<[i16; 3]> {
+    pub fn unscaled_all<T>(&mut self) -> Result<UnscaledMargMeasurements<T>, E>
+        where T: From<[i16; 3]>
+    {
         let buffer = &mut [0; 21];
         NineDOFDevice::read_9dof(&mut self.dev,
                                  Register::ACCEL_XOUT_H,
@@ -761,7 +767,9 @@ impl<E, DEV> Mpu9250<DEV, Marg>
 
     /// Reads and returns Accelerometer + Gyroscope + Thermometer + Magnetometer
     /// measurements scaled and converted to respective units.
-    pub fn all<T>(&mut self) -> Result<MargMeasurements<T>, E> where T: From<[f32; 3]> {
+    pub fn all<T>(&mut self) -> Result<MargMeasurements<T>, E>
+        where T: From<[f32; 3]>
+    {
         let buffer = &mut [0; 21];
         NineDOFDevice::read_9dof(&mut self.dev,
                                  Register::ACCEL_XOUT_H,
@@ -778,22 +786,19 @@ impl<E, DEV> Mpu9250<DEV, Marg>
                               mag })
     }
 
-    fn scale_and_correct_mag(&self,
-                             buffer: &[u8],
-                             offset: usize)
-                             -> [f32; 3] {
+    fn scale_and_correct_mag(&self, buffer: &[u8], offset: usize) -> [f32; 3] {
         let resolution = self.mag_scale.resolution();
         let raw = self.to_vector_inverted(buffer, offset);
 
-    [
-        raw[0] as f32 * resolution * self.mag_sensitivity_adjustments[0],
-        raw[1] as f32 * resolution * self.mag_sensitivity_adjustments[1],
-        raw[2] as f32 * resolution * self.mag_sensitivity_adjustments[2],
-        ]
-            }
+        [raw[0] as f32 * resolution * self.mag_sensitivity_adjustments[0],
+         raw[1] as f32 * resolution * self.mag_sensitivity_adjustments[1],
+         raw[2] as f32 * resolution * self.mag_sensitivity_adjustments[2]]
+    }
 
     /// Reads and returns raw unscaled Magnetometer measurements (LSB).
-    pub fn unscaled_mag<T>(&mut self) -> Result<T, E> where T: From<[i16; 3]>{
+    pub fn unscaled_mag<T>(&mut self) -> Result<T, E>
+        where T: From<[i16; 3]>
+    {
         let buffer = &mut [0; 7];
         self.dev.read_xyz(buffer)?;
         Ok(self.to_vector_inverted(buffer, 0).into())
@@ -801,19 +806,25 @@ impl<E, DEV> Mpu9250<DEV, Marg>
 
     /// Read and returns Magnetometer measurements scaled, adjusted for factory
     /// sensitivities, and converted to microTeslas.
-    pub fn mag<T>(&mut self) -> Result<T, E> where T: From<[f32; 3]> {
+    pub fn mag<T>(&mut self) -> Result<T, E>
+        where T: From<[f32; 3]>
+    {
         let buffer = &mut [0; 7];
         self.dev.read_xyz(buffer)?;
         Ok(self.scale_and_correct_mag(buffer, 0).into())
     }
 
     /// Returns raw mag sensitivity adjustments
-    pub fn raw_mag_sensitivity_adjustments<T>(&self) -> T where T: From<[u8; 3]> {
+    pub fn raw_mag_sensitivity_adjustments<T>(&self) -> T
+        where T: From<[u8; 3]>
+    {
         self.raw_mag_sensitivity_adjustments.into()
     }
 
     /// Returns mag sensitivity adjustments
-    pub fn mag_sensitivity_adjustments<T>(&self) -> T where T: From<[f32; 3]> {
+    pub fn mag_sensitivity_adjustments<T>(&self) -> T
+        where T: From<[f32; 3]>
+    {
         self.mag_sensitivity_adjustments.into()
     }
 
@@ -1019,32 +1030,51 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
         self.write_mem(DmpMemory::CFG_15, &conf)?;
 
-        let mut set_config =
-            |address, state, config_enabled, config_disabled| -> Result<(), Error<E>>
-            {
-                let config = if state {config_enabled} else {config_disabled};
-                self.write_mem(address, config)?;
-
-                Ok(())
+        let mut set_config = |address,
+                              state,
+                              config_enabled,
+                              config_disabled|
+         -> Result<(), Error<E>> {
+            let config = if state {
+                config_enabled
+            } else {
+                config_disabled
             };
+            self.write_mem(address, config)?;
 
-        set_config(DmpMemory::CFG_27, features.tap | features.android_orient, &[0x20], &[0xd8])?;
-        set_config(DmpMemory::CFG_MOTION_BIAS, features.gyro_auto_calibrate,
-             &[0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d],
-             &[0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7])?;
+            Ok(())
+        };
+
+        set_config(DmpMemory::CFG_27,
+                   features.tap | features.android_orient,
+                   &[0x20],
+                   &[0xd8])?;
+        set_config(DmpMemory::CFG_MOTION_BIAS,
+                   features.gyro_auto_calibrate,
+                   &[0xb8, 0xaa, 0xb3, 0x8d, 0xb4, 0x98, 0x0d, 0x35, 0x5d],
+                   &[0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7])?;
 
         if features.raw_gyro {
-            set_config(DmpMemory::CFG_GYRO_RAW_DATA, features.gyro_auto_calibrate,
-                 &[0xb2, 0x8b, 0xb6, 0x9b], &[0xb0, 0x80, 0xb4, 0x90])?;
+            set_config(DmpMemory::CFG_GYRO_RAW_DATA,
+                       features.gyro_auto_calibrate,
+                       &[0xb2, 0x8b, 0xb6, 0x9b],
+                       &[0xb0, 0x80, 0xb4, 0x90])?;
         }
 
         // TODO handle tap
         set_config(DmpMemory::CFG_20, features.tap, &[0xf8], &[0xd8])?;
-        set_config(DmpMemory::CFG_ANDROID_ORIENT_INT, features.android_orient, &[0xd9], &[0xd8])?;
-        set_config(DmpMemory::CFG_LP_QUAT, features.quat,
-             &[0xc0, 0xc2, 0xc4, 0xc6], &[0x8b, 0x8b, 0x8b, 0x8b])?;
-        set_config(DmpMemory::CFG_8, features.quat6,
-             &[0x20, 0x28, 0x30, 0x38], &[0xa3, 0xa3, 0xa3, 0xa3])?;
+        set_config(DmpMemory::CFG_ANDROID_ORIENT_INT,
+                   features.android_orient,
+                   &[0xd9],
+                   &[0xd8])?;
+        set_config(DmpMemory::CFG_LP_QUAT,
+                   features.quat,
+                   &[0xc0, 0xc2, 0xc4, 0xc6],
+                   &[0x8b, 0x8b, 0x8b, 0x8b])?;
+        set_config(DmpMemory::CFG_8,
+                   features.quat6,
+                   &[0x20, 0x28, 0x30, 0x38],
+                   &[0xa3, 0xa3, 0xa3, 0xa3])?;
 
         self.reset_fifo(delay)?;
 
@@ -1053,8 +1083,11 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
     /// Reads and returns raw unscaled DMP measurement depending on
     /// activated features(LSB).
-    pub fn dmp_unscaled_all<T1, T2>(&mut self) -> Result<UnscaledDmpMeasurement<T1, T2>, Error<E>>
-        where T1: From<[i16; 3]>, T2: From<[i32; 4]>
+    pub fn dmp_unscaled_all<T1, T2>(
+        &mut self)
+        -> Result<UnscaledDmpMeasurement<T1, T2>, Error<E>>
+        where T1: From<[i16; 3]>,
+              T2: From<[i32; 4]>
     {
         let features = self.dmp_configuration.unwrap().features;
 
@@ -1065,11 +1098,10 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         let mut offset = 0;
-        let mut measures: UnscaledDmpMeasurement<T1, T2> = UnscaledDmpMeasurement {
-            quaternion: None,
-            accel: None,
-            gyro: None
-        };
+        let mut measures: UnscaledDmpMeasurement<T1, T2> =
+            UnscaledDmpMeasurement { quaternion: None,
+                                     accel: None,
+                                     gyro: None };
         if features.quat6 || features.quat {
             measures.quaternion = Some(self.to_quat(&buffer).into());
             offset += 16;
@@ -1085,12 +1117,13 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         Ok(measures)
     }
 
-
     /// Read all measurement from DMP
     /// Reads and returns DMP measurement scaled depending on
     /// activated features(LSB).
-    pub fn dmp_all<T1, T2>(&mut self) -> Result<DmpMeasurement<T1, T2>, Error<E>>
-        where T1: From<[f32; 3]>, T2: From<[f64; 4]>
+    pub fn dmp_all<T1, T2>(&mut self)
+                           -> Result<DmpMeasurement<T1, T2>, Error<E>>
+        where T1: From<[f32; 3]>,
+              T2: From<[f64; 4]>
     {
         let features = self.dmp_configuration.unwrap().features;
 
@@ -1101,11 +1134,10 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         let mut offset = 0;
-        let mut measures: DmpMeasurement<T1, T2> = DmpMeasurement {
-            quaternion: None,
-            accel: None,
-            gyro: None
-        };
+        let mut measures: DmpMeasurement<T1, T2> =
+            DmpMeasurement { quaternion: None,
+                             accel: None,
+                             gyro: None };
         if features.quat6 || features.quat {
             measures.quaternion = Some(self.to_norm_quat(&buffer).into());
             offset += 16;
@@ -1124,41 +1156,34 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     /// Parse quaternion from fifo buffer
     fn to_quat(&self, buffer: &[u8]) -> [i32; 4] {
         [(buffer[1] as i32) << 24
-            | (buffer[2] as i32) << 16
-            | (buffer[3] as i32) << 8
-            | buffer[4] as i32,
+         | (buffer[2] as i32) << 16
+         | (buffer[3] as i32) << 8
+         | buffer[4] as i32,
          (buffer[5] as i32) << 24
-            | (buffer[6] as i32) << 16
-            | (buffer[7] as i32) << 8
-            | buffer[8] as i32,
+         | (buffer[6] as i32) << 16
+         | (buffer[7] as i32) << 8
+         | buffer[8] as i32,
          (buffer[9] as i32) << 24
-            | (buffer[10] as i32) << 16
-            | (buffer[11] as i32) << 8
-            | buffer[12] as i32,
+         | (buffer[10] as i32) << 16
+         | (buffer[11] as i32) << 8
+         | buffer[12] as i32,
          (buffer[13] as i32) << 24
-            | (buffer[14] as i32) << 16
-            | (buffer[15] as i32) << 8
-            | buffer[16] as i32
-        ]
+         | (buffer[14] as i32) << 16
+         | (buffer[15] as i32) << 8
+         | buffer[16] as i32]
     }
 
     /// Normalized the quaternion
     fn to_norm_quat(&self, buffer: &[u8]) -> [f64; 4] {
         let quat = self.to_quat(buffer);
         //TODO handle this better, here is an ugly map on fixed size array
-        let quat = [
-            f64::from(quat[0]),
-            f64::from(quat[1]),
-            f64::from(quat[2]),
-            f64::from(quat[3])
-        ];
-        let sum = libm::sqrt(quat.iter().map(|x| libm::pow(*x, 2.0)).sum::<f64>());
-        [
-            quat[0] / sum,
-            quat[1] / sum,
-            quat[2] / sum,
-            quat[3] / sum,
-        ]
+        let quat = [f64::from(quat[0]),
+                    f64::from(quat[1]),
+                    f64::from(quat[2]),
+                    f64::from(quat[3])];
+        let sum =
+            libm::sqrt(quat.iter().map(|x| libm::pow(*x, 2.0)).sum::<f64>());
+        [quat[0] / sum, quat[1] / sum, quat[2] / sum, quat[3] / sum]
     }
 }
 
@@ -1235,11 +1260,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let resolution = self.accel_scale.resolution();
         let scale = G * resolution;
         let raw = self.to_vector(buffer, offset);
-        [
-            raw[0] as f32 * scale,
-            raw[1] as f32 * scale,
-            raw[2] as f32 * scale,
-        ]
+        [raw[0] as f32 * scale, raw[1] as f32 * scale, raw[2] as f32 * scale]
     }
 
     fn scale_gyro(&self, buffer: &[u8], offset: usize) -> [f32; 3] {
@@ -1324,28 +1345,36 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     }
 
     /// Reads and returns unscaled accelerometer measurements (LSB).
-    pub fn unscaled_accel<T>(&mut self) -> Result<T, E> where T: From<[i16; 3]>{
+    pub fn unscaled_accel<T>(&mut self) -> Result<T, E>
+        where T: From<[i16; 3]>
+    {
         let buffer = &mut [0; 7];
         self.dev.read_many(Register::ACCEL_XOUT_H, buffer)?;
         Ok(self.to_vector(buffer, 0).into())
     }
 
     /// Reads and returns accelerometer measurements scaled and converted to g.
-    pub fn accel<T>(&mut self) -> Result<T, E> where T: From<[f32; 3]> {
+    pub fn accel<T>(&mut self) -> Result<T, E>
+        where T: From<[f32; 3]>
+    {
         let buffer = &mut [0; 7];
         self.dev.read_many(Register::ACCEL_XOUT_H, buffer)?;
         Ok(self.scale_accel(buffer, 0).into())
     }
 
     /// Reads and returns unsacled Gyroscope measurements (LSB).
-    pub fn unscaled_gyro<T>(&mut self) -> Result<T, E> where T: From<[i16; 3]> {
+    pub fn unscaled_gyro<T>(&mut self) -> Result<T, E>
+        where T: From<[i16; 3]>
+    {
         let buffer = &mut [0; 7];
         self.dev.read_many(Register::GYRO_XOUT_H, buffer)?;
         Ok(self.to_vector(buffer, 0).into())
     }
 
     /// Reads and returns gyroscope measurements scaled and converted to rad/s.
-    pub fn gyro<T>(&mut self) -> Result<T, E> where T: From<[f32; 3]> {
+    pub fn gyro<T>(&mut self) -> Result<T, E>
+        where T: From<[f32; 3]>
+    {
         let buffer = &mut [0; 7];
         self.dev.read_many(Register::GYRO_XOUT_H, buffer)?;
         Ok(self.scale_gyro(buffer, 0).into())
@@ -1541,8 +1570,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
             let accel_temp = self.to_vector(buffer, 0);
             let gyro_temp = self.to_vector(buffer, 6);
             for i in 0..3 {
-            accel_biases[i] += i32(accel_temp[i]);
-            gyro_biases[i] += i32(gyro_temp[i]);
+                accel_biases[i] += i32(accel_temp[i]);
+                gyro_biases[i] += i32(gyro_temp[i]);
             }
         }
         for i in 0..3 {
@@ -1581,30 +1610,21 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         self.sample_rate_divisor = orig_sample_rate_divisor;
         self.init_mpu(delay)?;
 
-       Ok([
-           accel_biases[0] as f32 * scale,
-           accel_biases[1] as f32 * scale,
-           accel_biases[2] as f32 * scale,
-        ])
+        Ok([accel_biases[0] as f32 * scale,
+            accel_biases[1] as f32 * scale,
+            accel_biases[2] as f32 * scale])
     }
 
     fn to_vector(&self, buffer: &[u8], offset: usize) -> [i16; 3] {
-        [((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]))
-                     as i16,
-                     ((u16(buffer[offset + 3]) << 8) | u16(buffer[offset + 4]))
-                     as i16,
-                     ((u16(buffer[offset + 5]) << 8) | u16(buffer[offset + 6]))
-                     as i16
-        ]
+        [((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2])) as i16,
+         ((u16(buffer[offset + 3]) << 8) | u16(buffer[offset + 4])) as i16,
+         ((u16(buffer[offset + 5]) << 8) | u16(buffer[offset + 6])) as i16]
     }
 
     fn to_vector_inverted(&self, buffer: &[u8], offset: usize) -> [i16; 3] {
-        [((u16(buffer[offset + 2]) << 8) + u16(buffer[offset + 1]))
-                     as i16,
-                     ((u16(buffer[offset + 4]) << 8) + u16(buffer[offset + 3]))
-                     as i16,
-                     ((u16(buffer[offset + 6]) << 8) + u16(buffer[offset + 5]))
-                     as i16]
+        [((u16(buffer[offset + 2]) << 8) + u16(buffer[offset + 1])) as i16,
+         ((u16(buffer[offset + 4]) << 8) + u16(buffer[offset + 3])) as i16,
+         ((u16(buffer[offset + 6]) << 8) + u16(buffer[offset + 5])) as i16]
     }
 
     /// Reads the WHO_AM_I register; should return `0x71`
@@ -1762,8 +1782,8 @@ pub enum DmpMemory {
     CFG_GYRO_RAW_DATA = 2722,
     X_GRT_Y_TMP2 = 1379,
 
-    D_0_22 = 22+512,
-    D_0_24 = 24+512,
+    D_0_22 = 22 + 512,
+    D_0_24 = 24 + 512,
 
     D_0_36 = 36,
     //D_0_52 = 52, // Same as D_TILT1_H

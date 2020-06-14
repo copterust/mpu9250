@@ -567,7 +567,9 @@ impl MpuConfig<types::Dmp> {
     /// Selects [`dmp features`] to auto calibrate gyro
     ///
     /// [`dmp features`]: ./struct.DmpFeatures.html
-    pub fn dmp_features_gyro_auto_calibrate(&mut self, feature: bool) -> &mut Self {
+    pub fn dmp_features_gyro_auto_calibrate(&mut self,
+                                            feature: bool)
+                                            -> &mut Self {
         match self.dmp_configuration.as_mut() {
             Some(mut x) => x.features.gyro_auto_calibrate = feature,
             None => self.dmp_configuration =
