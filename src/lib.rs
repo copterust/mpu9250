@@ -937,7 +937,6 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         where D: DelayMs<u8>
     {
         self.init_mpu(delay)?;
-        self._calibrate_at_rest(delay)?;
         self.init_dmp(delay, firmware)?;
         Ok(())
     }
