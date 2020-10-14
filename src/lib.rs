@@ -82,7 +82,9 @@ pub use types::*;
 
 #[doc(hidden)]
 pub use device::Releasable;
-pub use device::{Device, I2cDevice, NineDOFDevice, SpiDevice};
+pub use device::{
+    Device, I2CError, I2cDevice, NineDOFDevice, SpiDevice, SpiError
+};
 
 /// Suported MPUx devices
 pub enum MpuXDevice {
