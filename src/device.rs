@@ -124,9 +124,9 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
                  buffer: &mut [u8])
                  -> Result<(), Self::Error> {
         buffer[0] = reg.read_address();
-        self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
+        self.ncs.set_low().map_err(SpiError::NCSError)?;
         self.spi.transfer(buffer)?;
-        self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
+        self.ncs.set_high().map_err(SpiError::NCSError)?;
 
         Ok(())
     }
@@ -138,9 +138,9 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
     //      minutiæ details.
     #[inline(never)]
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
-        self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
+        self.ncs.set_low().map_err(SpiError::NCSError)?;
         self.spi.write(&[reg.write_address(), val])?;
-        self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
+        self.ncs.set_high().map_err(SpiError::NCSError)?;
         Ok(())
     }
 
@@ -151,10 +151,10 @@ impl<SPI, NCS, E, EO> Device for SpiDevice<SPI, NCS>
         if buffer.len() > 16 {
             return Err(Self::Error::WriteManyError);
         }
-        self.ncs.set_low().map_err(|a| SpiError::NCSError(a))?;
+        self.ncs.set_low().map_err(SpiError::NCSError)?;
         self.spi.write(&[reg.write_address()])?;
         self.spi.write(buffer)?;
-        self.ncs.set_high().map_err(|a| SpiError::NCSError(a))?;
+        self.ncs.set_high().map_err(SpiError::NCSError)?;
         Ok(())
     }
 }

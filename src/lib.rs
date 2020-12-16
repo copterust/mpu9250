@@ -1269,11 +1269,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let resolution = self.gyro_scale.resolution();
         let scale = PI_180 * resolution;
         let raw = self.to_vector(buffer, offset);
-        [
-            raw[0] as f32 * scale,
-            raw[1] as f32 * scale,
-            raw[2] as f32 * scale,
-        ].into()
+        [raw[0] as f32 * scale, raw[1] as f32 * scale, raw[2] as f32 * scale]
     }
 
     fn scale_temp(&self, buffer: &[u8], offset: usize) -> f32 {
@@ -1588,11 +1584,10 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         // Biases are additive, so change sign on
         // calculated average gyro biases
 
-        self.set_unscaled_gyro_bias(false, [
-            (gyro_biases[0] / -4) as i16,
-            (gyro_biases[1] / -4) as i16,
-            (gyro_biases[2] / -4) as i16,
-        ])?;
+        self.set_unscaled_gyro_bias(false,
+                                    [(gyro_biases[0] / -4) as i16,
+                                     (gyro_biases[1] / -4) as i16,
+                                     (gyro_biases[2] / -4) as i16])?;
 
         // Compute accelerometer biases to be returned
         let resolution = self.accel_scale.resolution();
@@ -1613,15 +1608,13 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
 
     /// Get unscaled gyroscope biases.
     /// Output format is +-1000dps
-    fn get_unscaled_gyro_bias(&mut self) -> Result<[i16; 3], Error<E>>
-    {
-        Ok([
-            (self.dev.read(Register::XG_OFFSET_H)? as i16) << 8
-                |  self.dev.read(Register::XG_OFFSET_L)? as i16,
+    fn get_unscaled_gyro_bias(&mut self) -> Result<[i16; 3], Error<E>> {
+        Ok([(self.dev.read(Register::XG_OFFSET_H)? as i16) << 8
+            | self.dev.read(Register::XG_OFFSET_L)? as i16,
             (self.dev.read(Register::YG_OFFSET_H)? as i16) << 8
-                |  self.dev.read(Register::YG_OFFSET_L)? as i16,
+            | self.dev.read(Register::YG_OFFSET_L)? as i16,
             (self.dev.read(Register::ZG_OFFSET_H)? as i16) << 8
-                |  self.dev.read(Register::ZG_OFFSET_L)? as i16])
+            | self.dev.read(Register::ZG_OFFSET_L)? as i16])
     }
 
     /// Get scaled gyroscope biases.
@@ -1631,18 +1624,18 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let biases = self.get_unscaled_gyro_bias()?;
         let scale = GyroScale::_1000DPS.resolution();
 
-        Ok([
-            biases[0] as f32 * scale,
+        Ok([biases[0] as f32 * scale,
             biases[1] as f32 * scale,
-            biases[2] as f32 * scale
-        ].into())
+            biases[2] as f32 * scale].into())
     }
 
     /// Set unscaled gyroscope biases.
-    /// In relative mode it will add the new biases to the existing ones instead of replacing them.
-    /// Input format is +-1000dps
-    fn set_unscaled_gyro_bias(&mut self, relative : bool, biases : [i16; 3]) -> Result<(), Error<E>>
-    {
+    /// In relative mode it will add the new biases to the existing ones instead
+    /// of replacing them. Input format is +-1000dps
+    fn set_unscaled_gyro_bias(&mut self,
+                              relative: bool,
+                              biases: [i16; 3])
+                              -> Result<(), Error<E>> {
         let mut new_biases = biases;
 
         if relative {
@@ -1653,43 +1646,46 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
             }
         }
 
-        self.dev.write(Register::XG_OFFSET_H, ((new_biases[0] >> 8) & 0xFF) as u8)?;
+        self.dev.write(Register::XG_OFFSET_H,
+                        ((new_biases[0] >> 8) & 0xFF) as u8)?;
         self.dev.write(Register::XG_OFFSET_L, (new_biases[0] & 0xFF) as u8)?;
-        self.dev.write(Register::YG_OFFSET_H, ((new_biases[1] >> 8) & 0xFF) as u8)?;
+        self.dev.write(Register::YG_OFFSET_H,
+                        ((new_biases[1] >> 8) & 0xFF) as u8)?;
         self.dev.write(Register::YG_OFFSET_L, (new_biases[1] & 0xFF) as u8)?;
-        self.dev.write(Register::ZG_OFFSET_H, ((new_biases[2] >> 8) & 0xFF) as u8)?;
+        self.dev.write(Register::ZG_OFFSET_H,
+                        ((new_biases[2] >> 8) & 0xFF) as u8)?;
         self.dev.write(Register::ZG_OFFSET_L, (new_biases[2] & 0xFF) as u8)?;
 
         Ok(())
     }
 
     /// Set scaled gyro biases.
-    /// In relative mode it will add the new biases to the existing ones instead of replacing them.
-    pub fn set_gyro_bias<T>(&mut self, relative : bool, biases : T) -> Result<(), Error<E>>
+    /// In relative mode it will add the new biases to the existing ones instead
+    /// of replacing them.
+    pub fn set_gyro_bias<T>(&mut self,
+                            relative: bool,
+                            biases: T)
+                            -> Result<(), Error<E>>
         where T: Into<[f32; 3]>
     {
         let biases = biases.into();
         let scale = GyroScale::_1000DPS.resolution();
 
-        self.set_unscaled_gyro_bias(relative, [
-            (biases[0] / scale) as i16,
-            (biases[1] / scale) as i16,
-            (biases[2] / scale) as i16
-        ])
+        self.set_unscaled_gyro_bias(relative,
+                                    [(biases[0] / scale) as i16,
+                                     (biases[1] / scale) as i16,
+                                     (biases[2] / scale) as i16])
     }
 
     /// Get unscaled accelerometer biases.
     /// Output format is +-16G
-    fn get_unscaled_accel_bias(&mut self) -> Result<[i16; 3], Error<E>>
-    {
-        Ok([
-            (self.dev.read(Register::XA_OFFSET_H)? as i16) << 8
-                |  self.dev.read(Register::XA_OFFSET_L)? as i16,
+    fn get_unscaled_accel_bias(&mut self) -> Result<[i16; 3], Error<E>> {
+        Ok([(self.dev.read(Register::XA_OFFSET_H)? as i16) << 8
+            | self.dev.read(Register::XA_OFFSET_L)? as i16,
             (self.dev.read(Register::YA_OFFSET_H)? as i16) << 8
-                |  self.dev.read(Register::YA_OFFSET_L)? as i16,
+            | self.dev.read(Register::YA_OFFSET_L)? as i16,
             (self.dev.read(Register::ZA_OFFSET_H)? as i16) << 8
-                |  self.dev.read(Register::ZA_OFFSET_L)? as i16
-        ])
+            | self.dev.read(Register::ZA_OFFSET_L)? as i16])
     }
 
     /// Get scaled accelerometer biases.
@@ -1699,54 +1695,59 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let biases = self.get_unscaled_accel_bias()?;
         let scale = G * AccelScale::_16G.resolution();
 
-        Ok([
-            biases[0] as f32 * scale,
+        Ok([biases[0] as f32 * scale,
             biases[1] as f32 * scale,
-            biases[2] as f32 * scale
-        ].into())
+            biases[2] as f32 * scale].into())
     }
 
     /// Set unscaled accelerometer biases.
-    /// Keep in mind that the registers contain factory-supplied values after reset.
-    /// In relative mode it will add the new biases to the existing ones instead of replacing them.
-    /// Input format is +-16G.
-    fn set_unscaled_accel_bias(&mut self, relative : bool, biases : [i16; 3])
-        -> Result<(), Error<E>>
-    {
+    /// Keep in mind that the registers contain factory-supplied values after
+    /// reset. In relative mode it will add the new biases to the existing
+    /// ones instead of replacing them. Input format is +-16G.
+    fn set_unscaled_accel_bias(&mut self,
+                               relative: bool,
+                               biases: [i16; 3])
+                               -> Result<(), Error<E>> {
         let mut new_biases = self.get_unscaled_accel_bias()?;
 
         // Do not touch the last bit
         for i in 0..3 {
             if !relative {
-                new_biases[i] = new_biases[i] & 1
+                new_biases[i] &= 1
             }
-            new_biases[i] = new_biases[i] + (biases[i] & !1);
+            new_biases[i] += biases[i] & !1;
         }
 
-        self.dev.write(Register::XA_OFFSET_H, ((new_biases[0] >> 8) & 0xFF) as u8)?;
+        self.dev.write(Register::XA_OFFSET_H,
+                        ((new_biases[0] >> 8) & 0xFF) as u8)?;
         self.dev.write(Register::XA_OFFSET_L, (new_biases[0] & 0xFF) as u8)?;
-        self.dev.write(Register::YA_OFFSET_H, ((new_biases[1] >> 8) & 0xFF) as u8)?;
+        self.dev.write(Register::YA_OFFSET_H,
+                        ((new_biases[1] >> 8) & 0xFF) as u8)?;
         self.dev.write(Register::YA_OFFSET_L, (new_biases[1] & 0xFF) as u8)?;
-        self.dev.write(Register::ZA_OFFSET_H, ((new_biases[2] >> 8) & 0xFF) as u8)?;
+        self.dev.write(Register::ZA_OFFSET_H,
+                        ((new_biases[2] >> 8) & 0xFF) as u8)?;
         self.dev.write(Register::ZA_OFFSET_L, (new_biases[2] & 0xFF) as u8)?;
 
         Ok(())
     }
 
     /// Set scaled accelerometer biases.
-    /// Keep in mind that the registers contain factory-supplied values after reset.
-    /// In relative mode it will add the new biases to the existing ones instead of replacing them.
-    pub fn set_accel_bias<T>(&mut self, relative : bool, biases : T) -> Result<(), Error<E>>
+    /// Keep in mind that the registers contain factory-supplied values after
+    /// reset. In relative mode it will add the new biases to the existing
+    /// ones instead of replacing them.
+    pub fn set_accel_bias<T>(&mut self,
+                             relative: bool,
+                             biases: T)
+                             -> Result<(), Error<E>>
         where T: Into<[f32; 3]>
     {
         let biases = biases.into();
         let scale = G * AccelScale::_16G.resolution();
 
-        self.set_unscaled_accel_bias(relative, [
-            (biases[0] / scale) as i16,
-            (biases[1] / scale) as i16,
-            (biases[2] / scale) as i16
-        ])
+        self.set_unscaled_accel_bias(relative,
+                                     [(biases[0] / scale) as i16,
+                                      (biases[1] / scale) as i16,
+                                      (biases[2] / scale) as i16])
     }
 
     fn to_vector(&self, buffer: &[u8], offset: usize) -> [i16; 3] {
