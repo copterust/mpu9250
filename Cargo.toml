@@ -18,7 +18,7 @@ default-features = false
 version = "0.2.2"
 
 [dev-dependencies]
-linux-embedded-hal = "0.2"
+linux-embedded-hal = "0.3"
 
 [features]
 # Enable the I2C MPU interface. This disables the SPI interface. All function
