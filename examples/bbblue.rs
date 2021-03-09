@@ -17,8 +17,18 @@ use mpu9250::Mpu9250;
 fn main() -> io::Result<()> {
     let i2c = I2cdev::new("/dev/i2c-2").expect("unable to open /dev/i2c-2");
 
-    let mut mpu9250 =
-        Mpu9250::marg_default(i2c, &mut Delay).expect("unable to make MPU9250");
+    // Legacy initialisation
+    let mut mpu9250 = Mpu9250::marg_default(i2c, &mut Delay)
+        .expect("unable to vreate MPU9250");
+
+    // New builder pattern initialisation
+    // 1. Create a new instance with the desired paramters
+    // let mut mpu9250 = MpuConfig::marg()
+    //     .gyro_scale(Default::default())
+    //     .gyro_temp_data_rate(Default::default())
+    //     .build(i2c);
+    //  2. Initialize the hardware only when actually needed
+    //  mpu9250.init(&mut Delay).unwrap();
 
     let who_am_i = mpu9250.who_am_i().expect("could not read WHO_AM_I");
     let mag_who_am_i = mpu9250.ak8963_who_am_i()
@@ -32,7 +42,7 @@ fn main() -> io::Result<()> {
     writeln!(&mut stdout,
              "   Accel XYZ(m/s^2)  |   Gyro XYZ (rad/s)  |  Mag Field XYZ(uT)  | Temp (C)")?;
     loop {
-        let all = mpu9250.all().expect("unable to read from MPU!");
+        let all = mpu9250.all::<[f32; 3]>().expect("unable to read from MPU!");
         write!(&mut stdout,
                "\r{:>6.2} {:>6.2} {:>6.2} |{:>6.1} {:>6.1} {:>6.1} |{:>6.1} {:>6.1} {:>6.1} | {:>4.1} ",
                all.accel[0],
