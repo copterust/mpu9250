@@ -41,7 +41,7 @@ fn main() {
     let ak8963_who_am_i = mpu9250.ak8963_who_am_i().unwrap();
 
     println!("WHO_AM_I: 0x{:x}", who_am_i);
-    println!("AK8963_WHO_AM_I: 0x{:x}", who_am_i);
+    println!("AK8963_WHO_AM_I: 0x{:x}", ak8963_who_am_i);
 
     assert_eq!(who_am_i, 0x71);
     assert_eq!(ak8963_who_am_i, 0x48);

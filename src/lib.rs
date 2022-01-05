@@ -1195,6 +1195,14 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     fn init_mpu<D>(&mut self, delay: &mut D) -> Result<(), E>
         where D: DelayMs<u8>
     {
+        // Stop all communication with peripherals (such as AK8963).
+        // If the chip is already powered up and if the communication is already running
+        // then resetting the MPU can result in a stuck peripheral that
+        // cannot be recovered from, except by physically powering down the peripheral.
+        self.dev.write(Register::I2C_SLV0_CTRL, 0).ok(); // Ignore error code.
+        self.dev.write(Register::I2C_SLV4_CTRL, 0).ok(); // Ignore error code.
+        delay.delay_ms(1); // Wait for transfer to finish.
+
         // wake up device
         self.dev.write(Register::PWR_MGMT_1, 0x80)?;
         delay.delay_ms(100); // Wait for all registers to reset
