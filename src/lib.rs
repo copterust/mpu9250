@@ -1091,7 +1091,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         where T1: From<[i16; 3]>,
               T2: From<[i32; 4]>
     {
-        let features = self.dmp_configuration.unwrap().features;
+        let features = self.dmp_configuration.unwrap_or_default().features;
 
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
@@ -1127,7 +1127,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         where T1: From<[f32; 3]>,
               T2: From<[f64; 4]>
     {
-        let features = self.dmp_configuration.unwrap().features;
+        let features = self.dmp_configuration.unwrap_or_default().features;
 
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
