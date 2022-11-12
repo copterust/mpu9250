@@ -708,9 +708,11 @@ impl<E, DEV> Mpu9250<DEV, Marg>
         AK8963::init(&mut self.dev, delay)?;
         delay.delay_ms(10);
         // First extract the factory calibration for each magnetometer axis
+        /// Power down
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
 
+        /// Fuse ROM access mode
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x0F)?;
         delay.delay_ms(20);
         let mag_x_bias = AK8963::read(&mut self.dev, ak8963::Register::ASAX)?;
@@ -722,6 +724,7 @@ impl<E, DEV> Mpu9250<DEV, Marg>
         self.mag_sensitivity_adjustments = [f32(mag_x_bias - 128) / 256. + 1.,
                                             f32(mag_y_bias - 128) / 256. + 1.,
                                             f32(mag_z_bias - 128) / 256. + 1.];
+        /// Power down magnetometer
         AK8963::write(&mut self.dev, ak8963::Register::CNTL, 0x00)?;
         delay.delay_ms(10);
         // Set magnetometer data resolution and sample ODR

@@ -191,8 +191,8 @@ pub enum MagScale {
 impl MagScale {
     pub(crate) fn resolution(&self) -> f32 {
         match self {
-            MagScale::_14BITS => 10. * 4912. / 8190.,
-            MagScale::_16BITS => 10. * 4912. / 32760.0,
+            MagScale::_14BITS => 10. * 4912. / 8192.,
+            MagScale::_16BITS => 10. * 4912. / 32768.0,
         }
     }
 }
