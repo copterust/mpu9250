@@ -814,6 +814,17 @@ impl<E, DEV> Mpu9250<DEV, Marg>
         AK8963::write(&mut self.dev, ak8963::Register::ASTC, 0x00)?;
         // (7) Set Power-down mode. (MODE[3:0]=“0000”)
         AK8963::write(&mut self.dev, ak8963::Register::CNTL1, control)?;
+        // When measurement data read by the above sequence is in the range
+        // of following table after sensitivity adjustment (refer to 8.3.11),
+        // AK8963 is working normally
+        let measurements = self.to_vector_inverted(buffer, 0);
+        let range = if (control & 0b00010000) != 0 { 200.0 } else { 50.0 };
+        for i in 0..3 {
+            let adjusted_measurement = measurements[i] as f32 * self.mag_sensitivity_adjustments[i];
+            if !(adjusted_measurement < -range || adjusted_measurement > range) {
+                return Ok(false)
+            }
+        }
         Ok(true)
     }
 
