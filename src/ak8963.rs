@@ -20,9 +20,10 @@ pub enum Register {
     YOUT_H = 0x06,
     ZOUT_L = 0x07,
     ZOUT_H = 0x08,
-    ST2 = 0x09, // Data overflow bit 3 and data read error status bit 2
-    CNTL = 0x0A, /* Power down (0000), single-measurement (0001), self-test
-                 * (1000) and Fuse ROM (1111) modes on bits 3:0 */
+    ST2 = 0x09,    // Data overflow bit 3 and data read error status bit 2
+    CNTL1 = 0x0A,  /* Power down (0000), single-measurement (0001), self-test
+                    * (1000) and Fuse ROM (1111) modes on bits 3:0 */
+    CNTL2 = 0x0B,  // Control 2: 
     ASTC = 0x0C,   // Self test control
     I2CDIS = 0x0F, // I2C disable
     ASAX = 0x10,   // Fuse ROM x-axis sensitivity adjustment value
