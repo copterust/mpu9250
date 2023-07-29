@@ -54,7 +54,6 @@
 
 #[macro_use]
 extern crate bitflags;
-extern crate cast;
 extern crate embedded_hal as hal;
 
 mod ak8963;
@@ -71,8 +70,6 @@ pub use dmp_firmware::DMP_FIRMWARE;
 use ak8963::AK8963;
 
 use core::marker::PhantomData;
-
-use cast::{f32, i32, u16};
 
 use hal::blocking::delay::DelayMs;
 use hal::spi::{Mode, Phase, Polarity};
@@ -721,9 +718,10 @@ impl<E, DEV> Mpu9250<DEV, Marg>
         // Return x-axis sensitivity adjustment values, etc.
         self.raw_mag_sensitivity_adjustments =
             [mag_x_bias, mag_y_bias, mag_z_bias];
-        self.mag_sensitivity_adjustments = [f32(mag_x_bias - 128) / 256. + 1.,
-                                            f32(mag_y_bias - 128) / 256. + 1.,
-                                            f32(mag_z_bias - 128) / 256. + 1.];
+        self.mag_sensitivity_adjustments =
+            [((mag_x_bias - 128) as f32) / 256. + 1.,
+             ((mag_y_bias - 128) as f32) / 256. + 1.,
+             ((mag_z_bias - 128) as f32) / 256. + 1.];
         // Power down magnetometer
         AK8963::write(&mut self.dev, ak8963::Register::CNTL1, 0x00)?;
         delay.delay_ms(10);
@@ -1321,7 +1319,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
     }
 
     fn scale_temp(&self, buffer: &[u8], offset: usize) -> f32 {
-        let t = f32((u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]));
+        let rt = (u16(buffer[offset + 1]) << 8) | u16(buffer[offset + 2]);
+        let t = rt as f32;
         (t - TEMP_ROOM_OFFSET) / TEMP_SENSITIVITY + TEMP_DIFF
     }
 
@@ -1605,7 +1604,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let fifo_count = ((u16(buffer[1]) << 8) | u16(buffer[2])) as i16;
         // Aim for at least half
         // How many sets of full gyro and accelerometer data for averaging
-        let packet_count = i32(fifo_count / 12);
+        let packet_count = (fifo_count / 12) as i32;
         if packet_count < 20 {
             return Err(Error::CalibrationError);
         }
@@ -1616,8 +1615,8 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
             let accel_temp = self.to_vector(buffer, 0);
             let gyro_temp = self.to_vector(buffer, 6);
             for i in 0..3 {
-                accel_biases[i] += i32(accel_temp[i]);
-                gyro_biases[i] += i32(gyro_temp[i]);
+                accel_biases[i] += accel_temp[i] as i32;
+                gyro_biases[i] += gyro_temp[i] as i32;
             }
         }
         for i in 0..3 {
@@ -2178,4 +2177,8 @@ fn transpose<T, E>(o: Option<Result<T, E>>) -> Result<Option<T>, E> {
         Some(Err(e)) => Err(e),
         None => Ok(None),
     }
+}
+
+fn u16(u: u8) -> u16 {
+    return u as u16;
 }

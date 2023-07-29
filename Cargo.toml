@@ -13,10 +13,6 @@ embedded-hal = "0.2.3"
 bitflags = "1.0"
 libm = { version = "0.2.1", optional = true }
 
-[dependencies.cast]
-default-features = false
-version = "0.2.2"
-
 [dev-dependencies]
 linux-embedded-hal = "0.3"
 
