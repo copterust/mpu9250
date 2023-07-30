@@ -38,11 +38,27 @@ Use embedded-hal implementation to get SPI, NCS, and delay, then create mpu hand
 extern crate mpu9250; // or just use mpu9250; if 2018 edition is used.
 
 // to create sensor with mag support and default configuration:
-let mut _imu = Mpu9250::marg_default(spi, ncs, &mut delay)?;
+let mut marg = Mpu9250::marg_default(spi, ncs, &mut delay)?;
 // to create sensor without mag support and default configuration:
-let mut marg = Mpu9250::imu_default(spi, ncs, &mut delay)?;
+let mut imu = Mpu9250::imu_default(spi, ncs, &mut delay)?;
 // to get all supported measurements:
-let all = marg.all()?;
+let all = marg.all::<[f32; 3]>()?;
+println!("{:?}", all);
+```
+
+or use the new expiremntal builder pattern:
+
+```rust
+extern crate mpu9250; // or just use mpu9250; if 2018 edition is used.
+
+// to create sensor with mag support and default configuration:
+let mut marg = mpu9250::MpuConfig::marg().build(spi, ncs);
+marg.init(&mut delay)?;
+// to create sensor without mag support and default configuration:
+let mut imu = mpu9250::MpuConfig::imu().build(spi, ncs);
+imu.init(&mut Delay)?;
+// to get all supported measurements:
+let all = marg.all::<[f32;3]>()?;
 println!("{:?}", all);
 ```
 

@@ -20,7 +20,7 @@ use std::time::Duration;
 use hal::spidev::{self, SpidevOptions};
 use hal::sysfs_gpio::Direction;
 use hal::{Delay, Pin, Spidev};
-use mpu9250::Mpu9250;
+use mpu9250::{Mpu9250, MpuConfig};
 
 fn main() {
     let mut spi = Spidev::open("/dev/spidev0.0").unwrap();
@@ -35,7 +35,17 @@ fn main() {
     ncs.set_direction(Direction::Out).unwrap();
     ncs.set_value(1).unwrap();
 
+    // Legacy initialisation
     let mut mpu9250 = Mpu9250::marg_default(spi, ncs, &mut Delay).unwrap();
+
+    // New builder pattern initialisation
+    // 1. Create a new instance with the desired paramters
+    // let mut mpu9250 = MpuConfig::marg()
+    //     .gyro_scale(Default::default())
+    //     .gyro_temp_data_rate(Default::default())
+    //     .build(spi, ncs);
+    //  2. Initialize the hardware only when actually needed
+    // mpu9250.init(&mut Delay).unwrap();
 
     let who_am_i = mpu9250.who_am_i().unwrap();
     let ak8963_who_am_i = mpu9250.ak8963_who_am_i().unwrap();
@@ -46,9 +56,9 @@ fn main() {
     assert_eq!(who_am_i, 0x71);
     assert_eq!(ak8963_who_am_i, 0x48);
 
-    println!("{:#?}", mpu9250.all().unwrap());
+    println!("{:#?}", mpu9250.all::<[f32; 3]>().unwrap());
 
     thread::sleep(Duration::from_millis(100));
 
-    println!("{:#?}", mpu9250.all().unwrap());
+    println!("{:#?}", mpu9250.all::<[f32; 3]>().unwrap());
 }

@@ -14,8 +14,9 @@ use std::io::{self, Write};
 use hal::sysfs_gpio;
 use hal::Delay;
 use hal::I2cdev;
+use mpu9250::MpuConfig;
 use mpu9250::DMP_FIRMWARE;
-use mpu9250::{Error, Mpu9250};
+use mpu9250::Error;
 
 fn main() {
     let i2c = I2cdev::new("/dev/i2c-2").expect("unable to open /dev/i2c-2");
@@ -30,8 +31,15 @@ fn main() {
         let mut stdout = stdout.lock();
         writeln!(&mut stdout, "  Normalized quaternion").unwrap();
 
-        let mut mpu9250 =
-            Mpu9250::dmp_default(i2c, &mut Delay, &DMP_FIRMWARE).expect("unable to load firmware");
+        //let mut mpu9250 =
+        //    Mpu9250::dmp_default(i2c, &mut Delay, &DMP_FIRMWARE).expect("unable to load firmware");
+        let mut mpu9250 = MpuConfig::dmp()
+            .dmp_rate(mpu9250::DmpRate::_50Hz)
+            .dmp_features_tap(true)
+            .dmp_features_gyro_auto_calibrate(true)
+            .build(i2c);
+
+        mpu9250.init(&mut Delay, &DMP_FIRMWARE).unwrap();
 
         loop {
             match event.poll(1000).unwrap() {
