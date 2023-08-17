@@ -7,9 +7,6 @@ use hal::digital::v2::OutputPin;
 
 use Register;
 
-/// MPU's I2C address (AD0 low)
-const MPU_I2C_ADDR: u8 = 0x68;
-
 /// Releasable describes a type that can be destroyed
 /// with a released asset.
 pub trait Releasable {
@@ -256,6 +253,7 @@ impl<E> core::convert::From<E> for I2CError<E> {
 /// MPU9250 is connected via I2C
 pub struct I2cDevice<I2C> {
     i2c: I2C,
+    address: u8,
 }
 
 impl<E, I2C> I2cDevice<I2C>
@@ -264,8 +262,9 @@ impl<E, I2C> I2cDevice<I2C>
               + i2c::WriteRead<Error = E>
 {
     /// Create a new I2C device
-    pub fn new(i2c: I2C) -> Self {
-        I2cDevice { i2c }
+    pub fn new(i2c: I2C, address: u8) -> Self {
+        I2cDevice { i2c,
+                    address }
     }
 }
 
@@ -274,10 +273,10 @@ impl<E, I2C> Releasable for I2cDevice<I2C>
               + i2c::Write<Error = E>
               + i2c::WriteRead<Error = E>
 {
-    type Released = I2C;
+    type Released = (I2C, u8);
 
-    fn release(self) -> I2C {
-        self.i2c
+    fn release(self) -> (I2C, u8) {
+        (self.i2c, self.address)
     }
 }
 
@@ -292,13 +291,13 @@ impl<E, I2C> Device for I2cDevice<I2C>
                  reg: Register,
                  buffer: &mut [u8])
                  -> Result<(), Self::Error> {
-        self.i2c.write_read(MPU_I2C_ADDR, &[reg as u8], &mut buffer[1..])?;
+        self.i2c.write_read(self.address, &[reg as u8], &mut buffer[1..])?;
         Ok(())
     }
 
     fn write(&mut self, reg: Register, val: u8) -> Result<(), Self::Error> {
         let buff: [u8; 2] = [reg as u8, val];
-        self.i2c.write(MPU_I2C_ADDR, &buff)?;
+        self.i2c.write(self.address, &buff)?;
         Ok(())
     }
 
@@ -315,7 +314,7 @@ impl<E, I2C> Device for I2cDevice<I2C>
         let message = &mut message[0..size + 1];
         message[0] = reg as u8;
         message[1..].copy_from_slice(&buffer[0..size]);
-        self.i2c.write(MPU_I2C_ADDR, message)?;
+        self.i2c.write(self.address, message)?;
         Ok(())
     }
 }
