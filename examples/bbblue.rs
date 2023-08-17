@@ -12,13 +12,13 @@ use std::time::Duration;
 
 use hal::Delay;
 use hal::I2cdev;
-use mpu9250::Mpu9250;
+use mpu9250::{I2cAddress, Mpu9250};
 
 fn main() -> io::Result<()> {
     let i2c = I2cdev::new("/dev/i2c-2").expect("unable to open /dev/i2c-2");
 
     let mut mpu9250 =
-        Mpu9250::marg_default(i2c, &mut Delay).expect("unable to make MPU9250");
+        Mpu9250::marg_default(i2c, I2cAddress::AD0Low, &mut Delay).expect("unable to make MPU9250");
 
     let who_am_i = mpu9250.who_am_i().expect("could not read WHO_AM_I");
     let mag_who_am_i = mpu9250.ak8963_who_am_i()
