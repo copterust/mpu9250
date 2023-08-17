@@ -370,45 +370,57 @@ mod i2c_defs {
     use super::*;
     use hal::blocking::i2c;
 
+    /// The I2C address of MPU9250, configured using the AD0 pin
+    #[derive(Clone, Copy)]
+    pub enum I2cAddress {
+        /// AD0 low, address = 0x68 (default on most boards)
+        AD0Low = 0x68,
+        /// AD0 high, address = 0x69
+        AD0High = 0x69,
+    }
+
     impl<E, I2C> Mpu9250<I2cDevice<I2C>, Imu>
         where I2C: i2c::Read<Error = E>
                   + i2c::Write<Error = E>
                   + i2c::WriteRead<Error = E>
     {
-        /// Creates a new [`Imu`] driver from an I2C peripheral
-        /// with default configuration.
+        /// Creates a new [`Imu`] driver from an I2C peripheral with the
+        /// provided address and default configuration.
         pub fn imu_default<D>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D)
             -> Result<Self, Error<<I2cDevice<I2C> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
-            Mpu9250::imu(i2c, delay, &mut MpuConfig::imu())
+            Mpu9250::imu(i2c, address, delay, &mut MpuConfig::imu())
         }
 
-        /// Creates a new Imu driver from an I2C peripheral with the
-        /// provided configuration [`Config`].
+        /// Creates a new Imu driver from an I2C peripheral with the provided
+        /// address and configuration [`Config`].
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
         pub fn imu<D>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D,
             config: &mut MpuConfig<Imu>)
             -> Result<Self, Error<<I2cDevice<I2C> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
-            let dev = I2cDevice::new(i2c);
+            let dev = I2cDevice::new(i2c, address as u8);
             Mpu9250::new_imu(dev, delay, config)
         }
 
-        /// Creates a new IMU driver from an I2C peripheral
-        /// with provided configuration [`Config`]. Reinit function can be used
-        /// to re-initialize I2C bus. Usecase: change I2C speed for
-        /// faster data transfer.
+        /// Creates a new IMU driver from an I2C peripheral with the provided
+        /// address and configuration [`Config`]. Reinit function can be used to
+        /// re-initialize I2C bus. Usecase: change I2C speed for faster data
+        /// transfer.
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
         pub fn imu_with_reinit<D, F>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D,
             config: &mut MpuConfig<Imu>,
             reinit_fn: F)
@@ -416,7 +428,7 @@ mod i2c_defs {
             where D: DelayMs<u8>,
                   F: FnOnce(I2C) -> Option<I2C>
         {
-            let dev = I2cDevice::new(i2c);
+            let dev = I2cDevice::new(i2c, address as u8);
             let mpu = Self::new_imu(dev, delay, config)?;
             mpu.reinit_i2c_device(reinit_fn)
         }
@@ -427,42 +439,45 @@ mod i2c_defs {
                   + i2c::Write<Error = E>
                   + i2c::WriteRead<Error = E>
     {
-        /// Creates a new [`Marg`] driver from an I2C peripheral with
-        /// default [`Config`].
+        /// Creates a new [`Marg`] driver from an I2C peripheral with the
+        /// provided address and default [`Config`].
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
         pub fn marg_default<D>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D)
             -> Result<Self, Error<<I2cDevice<I2C> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
-            Mpu9250::marg(i2c, delay, &mut MpuConfig::marg())
+            Mpu9250::marg(i2c, address, delay, &mut MpuConfig::marg())
         }
 
-        /// Creates a new MARG driver from an I2C peripheral
-        /// with provided configuration [`Config`].
+        /// Creates a new MARG driver from an I2C peripheral with the provided
+        /// address and configuration [`Config`].
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
         pub fn marg<D>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D,
             config: &mut MpuConfig<Marg>)
             -> Result<Self, Error<<I2cDevice<I2C> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
-            let dev = I2cDevice::new(i2c);
+            let dev = I2cDevice::new(i2c, address as u8);
             Self::new_marg(dev, delay, config)
         }
 
-        /// Creates a new MARG driver from an I2C peripheral
-        /// with provided configuration [`Config`]. Reinit function can be used
-        /// to re-initialize I2C bus. Usecase: change I2C speed for
-        /// faster data transfer.
+        /// Creates a new MARG driver from an I2C peripheral with the provided
+        /// address and configuration [`Config`]. Reinit function can be used to
+        /// re-initialize I2C bus. Usecase: change I2C speed for faster data
+        /// transfer.
         ///
         /// [`Config`]: ./conf/struct.MpuConfig.html
         pub fn marg_with_reinit<D, F>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D,
             config: &mut MpuConfig<Marg>,
             reinit_fn: F)
@@ -470,7 +485,7 @@ mod i2c_defs {
             where D: DelayMs<u8>,
                   F: FnOnce(I2C) -> Option<I2C>
         {
-            let dev = I2cDevice::new(i2c);
+            let dev = I2cDevice::new(i2c, address as u8);
             let mpu = Self::new_marg(dev, delay, config)?;
             mpu.reinit_i2c_device(reinit_fn)
         }
@@ -486,25 +501,27 @@ mod i2c_defs {
         /// configuration
         pub fn dmp_default<D>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D,
             firmware: &[u8])
             -> Result<Self, Error<<I2cDevice<I2C> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
-            let dev = I2cDevice::new(i2c);
+            let dev = I2cDevice::new(i2c, address as u8);
             Self::new_dmp(dev, delay, &mut MpuConfig::dmp(), firmware)
         }
 
         /// Creates a new DMP driver from an I2C peripheral
         pub fn dmp<D>(
             i2c: I2C,
+            address: I2cAddress,
             delay: &mut D,
             config: &mut MpuConfig<Dmp>,
             firmware: &[u8])
             -> Result<Self, Error<<I2cDevice<I2C> as device::Device>::Error>>
             where D: DelayMs<u8>
         {
-            let dev = I2cDevice::new(i2c);
+            let dev = I2cDevice::new(i2c, address as u8);
             Self::new_dmp(dev, delay, config, firmware)
         }
     }
@@ -517,7 +534,7 @@ mod i2c_defs {
     {
         /// Destroys the driver, recovering the I2C peripheral
         pub fn release(self) -> I2C {
-            self.dev.release()
+            self.dev.release().0
         }
 
         fn reinit_i2c_device<F>(
@@ -527,8 +544,8 @@ mod i2c_defs {
             where F: FnOnce(I2C) -> Option<I2C>
         {
             self.reset_device(|i2cdev| {
-                    let i2c = i2cdev.release();
-                    reinit_fn(i2c).map(|i2c| I2cDevice::new(i2c))
+                    let (i2c, address) = i2cdev.release();
+                    reinit_fn(i2c).map(|i2c| I2cDevice::new(i2c, address))
                 })
         }
     }
